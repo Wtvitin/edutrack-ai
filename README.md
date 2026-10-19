@@ -1,4 +1,16 @@
-# EduTrack AI
+<p align="center">
+  <img src="docs/assets/edutrack-cover.svg" alt="EduTrack AI — Organização e acompanhamento da rotina acadêmica" width="100%" />
+</p>
+
+<h1 align="center">EduTrack AI</h1>
+
+<p align="center">
+  <a href="#funcionalidades">Funcionalidades</a> · <a href="#instalação-e-execução">Executar localmente</a> · <a href="docs/arquitetura.md">Arquitetura</a> · <a href="#limitações-conhecidas">Status e limites</a>
+</p>
+
+<p align="center">
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&amp;logo=typescript&amp;logoColor=white" /> <img alt="Next.js" src="https://img.shields.io/badge/Next.js-181717?style=flat-square&amp;logo=nextdotjs" /> <img alt="PostgreSQL" src="https://img.shields.io/badge/PostgreSQL-4169A1?style=flat-square&amp;logo=postgresql&amp;logoColor=white" /> <img alt="Python" src="https://img.shields.io/badge/Python-3776AB?style=flat-square&amp;logo=python&amp;logoColor=white" />
+</p>
 
 Aplicação web para organizar a rotina acadêmica em um só lugar: disciplinas, tarefas, sessões de estudo, calendário, notificações e relatórios de desempenho. O projeto também inclui um agente de IA autenticado e uma integração opcional, somente para leitura, com o Google Classroom.
 
@@ -111,8 +123,8 @@ Não é necessário instalar Docker ou um servidor PostgreSQL para a configuraç
 ### 1. Clonar o repositório
 
 ```bash
-git clone https://github.com/Wtvitin/Edutrack---version-2.0.git
-cd Edutrack---version-2.0
+git clone https://github.com/Wtvitin/edutrack-ai.git
+cd edutrack-ai
 ```
 
 ### 2. Instalar dependências
