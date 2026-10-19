@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300" role="img" aria-labelledby="title desc">
+<title id="title">EduTrack AI — Organização acadêmica</title>
+<desc id="desc">Capa do projeto com as áreas Planejamento, Estudo e Análise.</desc>
+<rect width="1200" height="300" rx="16" fill="#0d1729"/>
+<rect x="0" y="0" width="8" height="300" fill="#38bdf8"/>
+<circle cx="1110" cy="70" r="180" fill="#142942"/>
+<circle cx="1110" cy="70" r="120" fill="#193653"/>
+<rect x="54" y="47" width="44" height="44" rx="12" fill="#38bdf8"/>
+<text x="76" y="78" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="30" font-weight="700" fill="#0d1729">E</text>
+<text x="114" y="76" font-family="Segoe UI,Arial,sans-serif" font-size="16" letter-spacing="3" fill="#a6c3df">PROJETO ACADÊMICO</text>
+<text x="54" y="157" font-family="Segoe UI,Arial,sans-serif" font-size="58" font-weight="700" fill="#f8fafc">EduTrack AI</text>
+<text x="56" y="202" font-family="Segoe UI,Arial,sans-serif" font-size="24" fill="#bbcede">Organização e acompanhamento da rotina acadêmica.</text>
+<text x="56" y="258" font-family="Segoe UI,Arial,sans-serif" font-size="16" letter-spacing="1.2" fill="#67d5fc">PLANEJAMENTO  /  ESTUDO  /  ANÁLISE</text>
+<rect x="960" y="128" width="148" height="10" rx="5" fill="#38bdf8"/>
+<rect x="960" y="158" width="110" height="10" rx="5" fill="#77c8e7"/>
+<rect x="960" y="188" width="130" height="10" rx="5" fill="#467da3"/>
+<circle cx="936" cy="133" r="5" fill="#38bdf8"/>
+<circle cx="936" cy="163" r="5" fill="#77c8e7"/>
+<circle cx="936" cy="193" r="5" fill="#467da3"/>
+</svg>
