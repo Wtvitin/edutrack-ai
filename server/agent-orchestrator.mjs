@@ -3,6 +3,7 @@ import { readAgentConfig, buildSystemPrompt, AgentError } from './agent-config.m
 import { actionResponseSchema, agentChatInputSchema, analysisResponseSchema, responseJsonSchemas, structuredResponseSchema, textResponseSchema, toolCallSchema } from './agent-schemas.mjs';
 import { createAgentProvider } from './agent-provider.mjs';
 import { createAgentToolRegistry } from './agent-tools.mjs';
+import { normalizeTemporalRequest } from './temporal.mjs';
 
 function redact(value) {
   if (Array.isArray(value)) return value.map(redact);
@@ -57,20 +58,40 @@ function expectedResponse(type) {
   return { name: 'agent_text_response_v1', strict: true, schema: responseJsonSchemas.text };
 }
 
+function jsonCandidate(content) {
+  const text = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+  try { return { value: JSON.parse(text), explanation: '' }; } catch {}
+  const match = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (!match) return null;
+  try { return { value: JSON.parse(match[1]), explanation: text.replace(match[0], '').trim() }; } catch { return null; }
+}
+
+function normalizeResponseValue(content) {
+  const candidate = jsonCandidate(content);
+  if (!candidate) return null;
+  let value = candidate.value;
+  if (value && typeof value === 'object' && value.response && typeof value.response === 'object') value = value.response;
+  if (value && typeof value === 'object' && value.chart && !value.type) value = { type: 'analysis', analysis: candidate.explanation || 'Analise visual gerada a partir dos seus dados.', metrics: {}, chart: value.chart };
+  if (value && typeof value === 'object' && ['line', 'bar', 'area', 'comparison'].includes(value.type) && value.data && value.series) value = { type: 'analysis', analysis: candidate.explanation || 'Analise visual gerada a partir dos seus dados.', metrics: {}, chart: value };
+  if (candidate.explanation && value && value.type === 'analysis' && !value.analysis) value.analysis = candidate.explanation;
+  return value;
+}
+
 function parseResponse(content, expectedType, executedTools) {
   if (typeof content !== 'string' || !content.trim()) throw new AgentError('O Agent retornou uma resposta vazia.', 503, 'invalid-structured-output');
-  let value;
-  try { value = JSON.parse(content); } catch {
+  const candidate = normalizeResponseValue(content);
+  if (!candidate) {
     if (expectedType) throw new AgentError('O Agent retornou uma resposta estruturada inválida.', 503, 'invalid-structured-output');
     const parsedText = textResponseSchema.safeParse({ type: 'text', content: content.trim() });
     if (!parsedText.success) throw new AgentError('O Agent retornou uma resposta inválida.', 503, 'invalid-structured-output');
     return parsedText.data;
   }
-  const parsed = structuredResponseSchema.safeParse(value);
-  if (!parsed.success || expectedType && parsed.data.type !== expectedType) throw new AgentError('O Agent retornou uma resposta estruturada incompatível.', 503, 'invalid-structured-output', parsed.success ? undefined : parsed.error);
+  const parsed = structuredResponseSchema.safeParse(candidate);
+  if (!parsed.success) throw new AgentError('A resposta estruturada nao passou na validacao do schema.', 503, 'schema-validation-failed', parsed.error);
+  if (expectedType && parsed.data.type !== expectedType) throw new AgentError(`O Agent retornou tipo '${parsed.data.type}', mas a etapa esperava '${expectedType}'.`, 503, 'unexpected-response-type');
   if (parsed.data.type === 'analysis') {
     const checked = analysisResponseSchema.safeParse(parsed.data);
-    if (!checked.success) throw new AgentError('A análise retornada pelo Agent é inválida.', 503, 'invalid-analysis', checked.error);
+    if (!checked.success) throw new AgentError('A analise retornada pelo Agent possui estrutura invalida.', 503, 'invalid-analysis', checked.error);
     if (checked.data.chart && !executedTools.has(checked.data.chart.source.tool)) throw new AgentError('O gráfico não corresponde a uma fonte autorizada.', 503, 'invalid-chart-source');
   }
   if (parsed.data.type === 'action') {
@@ -91,29 +112,26 @@ function errorContent(error) {
 function completeAnalysisFromTools(content, toolOutputs) {
   const trends = toolOutputs.get('get_study_trends');
   if (!trends) return content;
-  const daily = trends.daily;
-  const previousDaily = trends.previousDaily;
-  if (!Array.isArray(daily) || !Array.isArray(previousDaily) || daily.length !== trends.days || previousDaily.length !== trends.days || daily.some((point, index) => !Number.isInteger(point.minutes) || point.minutes < 0 || !Number.isInteger(previousDaily[index]?.minutes) || previousDaily[index].minutes < 0)) throw new AgentError('Os dados temporais retornados pela Tool sao invalidos.', 503, 'invalid-trend-data');
-  const metrics = { days: trends.days, start: trends.start, end: trends.end, previousStart: trends.previousStart, previousEnd: trends.previousEnd, minutes: trends.minutes, previousMinutes: trends.previousMinutes, sessions: trends.sessions, previousSessions: trends.previousSessions };
-  if (trends.sessions + trends.previousSessions === 0) return JSON.stringify({ type: 'analysis', analysis: 'Ainda nao ha sessoes de estudo registradas nos dois periodos para comparar.', metrics });
-  const data = daily.map((point, index) => ({ day: `Dia ${index + 1}`, minutes: point.minutes, previousMinutes: previousDaily[index].minutes }));
+  const periods = trends.periods;
+  if (!Array.isArray(periods) || !periods.length || periods.some(period => !Number.isInteger(period.minutes) || period.minutes < 0 || !Number.isInteger(period.sessions) || period.sessions < 0)) throw new AgentError('Os dados temporais retornados pela Tool sao invalidos.', 503, 'invalid-trend-data');
+  const metrics = { metric: trends.metric, unit: trends.unit, granularity: trends.granularity, count: trends.count, comparison: trends.comparison, start: trends.start, end: trends.end, minutes: trends.minutes, sessions: trends.sessions };
+  if (!trends.hasActivity) return JSON.stringify({ type: 'analysis', analysis: 'Nao ha sessoes de estudo registradas no periodo solicitado para comparar.', metrics });
+  const data = periods.map(period => ({ period: period.label, start: period.start, end: period.end, minutes: period.minutes, sessions: period.sessions }));
+  const chartType = trends.chartType === 'line' ? 'line' : 'bar';
   return JSON.stringify({
     type: 'analysis',
-    analysis: `Foram registrados ${trends.minutes} min nos 7 dias recentes (${trends.start} a ${trends.end}) e ${trends.previousMinutes} min nos 7 dias anteriores (${trends.previousStart} a ${trends.previousEnd}).`,
+    analysis: `Foram registrados ${trends.minutes} minutos de estudo entre ${trends.start} e ${trends.end}, organizados em ${trends.periods.length} periodos ${trends.granularity === 'month' ? 'mensais' : trends.granularity === 'week' ? 'semanais' : 'diarios'}.`,
     metrics,
     chart: {
-      type: 'comparison',
-      title: 'Tempo de estudo nas duas ultimas semanas',
-      description: 'Minutos registrados em cada dia correspondente dos periodos indicados.',
-      xAxis: { field: 'day', label: 'Dia do periodo' },
+      type: chartType,
+      title: `Minutos estudados por ${trends.granularity === 'month' ? 'mes' : trends.granularity === 'week' ? 'semana' : 'dia'}`,
+      description: 'Valores calculados a partir das sessoes de estudo registradas no periodo solicitado.',
+      xAxis: { field: 'period', label: trends.granularity === 'month' ? 'Mes' : trends.granularity === 'week' ? 'Semana' : 'Data' },
       yAxis: { field: 'minutes', label: 'Minutos estudados' },
-      series: [
-        { field: 'previousMinutes', label: `Semana anterior (${trends.previousStart} a ${trends.previousEnd})` },
-        { field: 'minutes', label: `Semana recente (${trends.start} a ${trends.end})` },
-      ],
+      series: [{ field: 'minutes', label: 'Minutos estudados' }],
       data,
       source: { tool: 'get_study_trends' },
-      datasetVersion: 'get_study_trends-v2',
+      datasetVersion: 'get_study_trends-v3',
     },
   });
 }
@@ -138,6 +156,8 @@ export async function chatWithAgent({ db, user, message, conversationId, config 
   await persistMessage(db, currentConversationId, 'USER', input.data.message);
   const subjects = (await db.query('SELECT id,name FROM subjects WHERE user_id=$1 ORDER BY created_at,id', [user.id])).rows;
   const messages = [{ role: 'system', content: buildSystemPrompt({ subjects }) }, ...history, { role: 'user', content: input.data.message }];
+  let requestedTemporal;
+  try { requestedTemporal = normalizeTemporalRequest(input.data.message); } catch (error) { requestedTemporal = { error }; }
   const executedToolNames = new Set();
   const executedCallKeys = new Set();
   const toolOutputs = new Map();
@@ -168,20 +188,23 @@ export async function chatWithAgent({ db, user, message, conversationId, config 
     await persistMessage(db, currentConversationId, 'ASSISTANT', JSON.stringify(assistantCallMessage));
     for (const rawCall of calls) {
       toolCallCount += 1;
-      const callParsed = toolCallSchema.safeParse({ id: rawCall?.id, name: rawCall?.name, arguments: rawCall?.arguments });
       const name = typeof rawCall?.name === 'string' ? rawCall.name : 'unknown';
       const callId = typeof rawCall?.id === 'string' ? rawCall.id : randomUUID();
       const definition = registry.get(name);
+      const callArguments = name === 'get_study_trends' ? { ...(rawCall?.arguments || {}), ...(requestedTemporal?.error ? {} : { temporal: requestedTemporal }) } : (rawCall?.arguments || {});
       const executionId = randomUUID();
-      const key = `${callId}:${name}:${JSON.stringify(rawCall?.arguments || {})}`;
-      await db.query('INSERT INTO ai_tool_executions(id,user_id,conversation_id,intent,tool_name,input_json,status,model,provider,prompt_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)', [executionId, user.id, currentConversationId, definition?.risk || 'unknown', name, boundedJson(rawCall?.arguments || {}, config.maxToolResultLength), 'PENDING', result.model || config.model, config.provider, config.promptVersion]);
+      const key = `${callId}:${name}:${JSON.stringify(callArguments)}`;
+      await db.query('INSERT INTO ai_tool_executions(id,user_id,conversation_id,intent,tool_name,input_json,status,model,provider,prompt_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)', [executionId, user.id, currentConversationId, definition?.risk || 'unknown', name, boundedJson(callArguments, config.maxToolResultLength), 'PENDING', result.model || config.model, config.provider, config.promptVersion]);
       let output;
       let failure;
       try {
-        if (!callParsed.success) throw new AgentError('Tool Call malformada.', 400, 'invalid-tool-call', callParsed.error);
+        const effectiveCall = { id: callId, name, arguments: callArguments };
+        const effectiveParsed = toolCallSchema.safeParse(effectiveCall);
+        if (!effectiveParsed.success) throw new AgentError('Tool Call malformada.', 400, 'invalid-tool-call', effectiveParsed.error);
+        if (requestedTemporal?.error && name === 'get_study_trends') throw new AgentError(requestedTemporal.error.message, 400, 'invalid-temporal-range');
         if (executedCallKeys.has(key)) throw new AgentError('Tool Call duplicada rejeitada.', 400, 'duplicate-tool-call');
         executedCallKeys.add(key);
-        const validation = registry.validate(name, callParsed.data.arguments);
+        const validation = registry.validate(name, effectiveParsed.data.arguments);
         if (!validation.success) throw validation.error;
         output = await registry.execute(name, validation.data, { db, user, executionId, conversationId: currentConversationId, config });
         executedToolNames.add(name);

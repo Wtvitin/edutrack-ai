@@ -9,7 +9,11 @@ const numberWords = Object.freeze({
 });
 
 const stripAccents = value => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-const localDate = value => new Intl.DateTimeFormat('en-CA', { timeZone: timezone }).format(new Date(`${value}T12:00:00Z`));
+const localDate = value => {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(value);
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+};
 const shiftDate = (value, days) => {
   const date = new Date(`${value}T12:00:00Z`);
   date.setUTCDate(date.getUTCDate() + days);

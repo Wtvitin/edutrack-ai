@@ -39,6 +39,18 @@ const taskUpdateSchema = z.object({
 const taskIdSchema = z.object({ taskId: uuid }).strict();
 const listTasksSchema = z.object({ status: z.preprocess(value => value === null ? undefined : value, z.enum(taskStatusValues).optional()) }).strict();
 const emptySchema = z.object({}).strict();
+const temporalRequestSchema = z.object({
+  unit: z.enum(['day', 'week', 'month']),
+  count: z.number().int().min(1).max(366),
+  granularity: z.enum(['day', 'week', 'month']),
+  comparison: z.enum(['single', 'periods', 'current_vs_previous']),
+  chartType: z.enum(['line', 'bar']).optional(),
+  start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  today: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  explicit: z.boolean().optional(),
+  timezone: z.literal('America/Sao_Paulo'),
+}).strict();
 
 export const toolArgumentSchemas = Object.freeze({
   create_task: taskCreateSchema,
@@ -47,7 +59,7 @@ export const toolArgumentSchemas = Object.freeze({
   get_task: taskIdSchema,
   list_tasks: listTasksSchema,
   get_academic_performance: emptySchema,
-  get_study_trends: z.object({ days: z.union([z.literal(7), z.literal(14), z.literal(30), z.literal(90)]).optional() }).strict(),
+  get_study_trends: z.object({ days: z.number().int().min(1).max(366).optional(), temporal: temporalRequestSchema.optional() }).strict(),
   get_general_dashboard: emptySchema,
 });
 
@@ -62,7 +74,7 @@ export const toolDefinitions = Object.freeze([
   { name: 'get_task', description: 'Get one academic task owned by the authenticated user.', risk: 'read', parameters: toolJson(['taskId'], { taskId: uuidJson }) },
   { name: 'list_tasks', description: 'List academic tasks for the authenticated user, optionally filtered by status.', risk: 'read', parameters: toolJson([], { status: { type: 'string', enum: taskStatusValues } }) },
   { name: 'get_academic_performance', description: 'Get academic performance metrics for the authenticated user.', risk: 'read', parameters: toolJson([], {}) },
-  { name: 'get_study_trends', description: 'Get historical study time trends for the authenticated user. Use days=7 for a comparison of the latest two consecutive weeks; results include daily minutes for both weeks.', risk: 'read', parameters: toolJson([], { days: { type: 'integer', enum: [7, 14, 30, 90] } }) },
+  { name: 'get_study_trends', description: 'Get historical study time for the authenticated user. Pass the normalized temporal request when the user specified a period; never replace an explicit period with a default.', risk: 'read', parameters: toolJson([], { days: { type: 'integer', minimum: 1, maximum: 366 }, temporal: { type: 'object', additionalProperties: false, required: ['unit', 'count', 'granularity', 'comparison', 'timezone'], properties: { unit: { type: 'string', enum: ['day', 'week', 'month'] }, count: { type: 'integer', minimum: 1, maximum: 366 }, granularity: { type: 'string', enum: ['day', 'week', 'month'] }, comparison: { type: 'string', enum: ['single', 'periods', 'current_vs_previous'] }, chartType: { type: 'string', enum: ['line', 'bar'] }, start: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' }, end: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' }, today: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' }, explicit: { type: 'boolean' }, timezone: { const: 'America/Sao_Paulo' } } } }) },
   { name: 'get_general_dashboard', description: 'Get dashboard aggregates for the authenticated user.', risk: 'read', parameters: toolJson([], {}) },
 ].map(definition => ({ ...definition, type: 'function', function: { name: definition.name, description: definition.description, parameters: definition.parameters } })));
 

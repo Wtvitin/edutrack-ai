@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { prepareAnalytics } from '../server/analytics.mjs';
+import { prepareAnalytics, prepareTemporalAnalytics } from '../server/analytics.mjs';
+import { normalizeTemporalRequest } from '../server/temporal.mjs';
 import { createAgentToolRegistry } from '../server/agent-tools.mjs';
 
 const snapshot = sessions => ({ subjects: [], tasks: [], sessions });
@@ -61,4 +62,31 @@ test('get_study_trends consulta o snapshot autenticado e devolve as duas s�rie
   assert.equal(result.daily.length, 7);
   assert.equal(result.previousDaily.length, 7);
   assert.equal(result.previousStart, '2026-10-14');
+});
+
+test('analytics produz quatro buckets semanais sem repetir agregados', async () => {
+  const request = normalizeTemporalRequest('Compare meu desempenho nas ultimas 4 semanas', { today: '2026-10-27' });
+  const result = await prepareTemporalAnalytics(snapshot([
+    { date: '2026-10-06', minutes: 10 },
+    { date: '2026-10-13', minutes: 20 },
+    { date: '2026-10-20', minutes: 30 },
+    { date: '2026-10-27', minutes: 40 },
+  ]), request);
+  assert.equal(result.periods.length, 4);
+  assert.deepEqual(result.periods.map(period => period.minutes), [10, 20, 30, 40]);
+  assert.deepEqual(result.periods.map(period => period.start), ['2026-10-05', '2026-10-12', '2026-10-19', '2026-10-26']);
+});
+
+test('analytics produz dois buckets mensais, incluindo o mes atual parcial', async () => {
+  const request = normalizeTemporalRequest('Compare meu desempenho nos ultimos 2 meses', { today: '2026-10-27' });
+  const result = await prepareTemporalAnalytics(snapshot([
+    { date: '2026-09-30', minutes: 15 },
+    { date: '2026-10-01', minutes: 25 },
+    { date: '2026-10-27', minutes: 35 },
+    { date: '2026-10-28', minutes: 100 },
+  ]), request);
+  assert.deepEqual(result.periods.map(period => period.start), ['2026-09-01', '2026-10-01']);
+  assert.deepEqual(result.periods.map(period => period.minutes), [15, 60]);
+  assert.equal(result.periods[1].complete, false);
+  assert.equal(result.end, '2026-10-27');
 });

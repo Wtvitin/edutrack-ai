@@ -1,9 +1,6 @@
+import { monthEnd, monthStart, shiftDate, temporalPeriodDates } from './temporal.mjs';
+
 const localDate = date => date.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
-const shiftDate = (date, days) => {
-  const shifted = new Date(`${date}T12:00:00Z`);
-  shifted.setUTCDate(shifted.getUTCDate() + days);
-  return shifted.toISOString().slice(0, 10);
-};
 
 export async function prepareAnalytics(data, days = 7, subject = 'all', { today = localDate(new Date()) } = {}) {
     const start = shiftDate(today, -(days - 1));
@@ -62,4 +59,52 @@ export async function prepareAnalytics(data, days = 7, subject = 'all', { today 
       previousEnd,
       subjects: distribution,
     };
+}
+
+const monthShift = (value, count) => {
+  const date = new Date(`${monthStart(value)}T12:00:00Z`);
+  date.setUTCMonth(date.getUTCMonth() + count);
+  return date.toISOString().slice(0, 7) + '-01';
+};
+
+function temporalBuckets(request, range) {
+  if (request.unit === 'day') return Array.from({ length: request.count }, (_, index) => {
+    const start = shiftDate(range.start, index);
+    return { start, end: start, label: start, complete: true };
+  });
+  if (request.unit === 'week') return Array.from({ length: request.count }, (_, index) => {
+    const start = shiftDate(range.start, index * 7);
+    const naturalEnd = shiftDate(start, 6);
+    return { start, end: naturalEnd < range.end ? naturalEnd : range.end, label: `Semana ${index + 1}`, complete: naturalEnd <= range.end };
+  });
+  return Array.from({ length: request.count }, (_, index) => {
+    const start = monthShift(range.start, index);
+    const naturalEnd = monthEnd(start);
+    return { start, end: naturalEnd < range.end ? naturalEnd : range.end, label: start.slice(0, 7), complete: naturalEnd <= range.end };
+  });
+}
+
+export async function prepareTemporalAnalytics(data, request, { today } = {}) {
+  const range = temporalPeriodDates(request, { today });
+  const buckets = temporalBuckets(request, range);
+  let sessions = data.sessions;
+  if (request.subject && request.subject !== 'all') sessions = sessions.filter(session => session.subjectId === request.subject);
+  const periods = buckets.map(bucket => {
+    const entries = sessions.filter(session => session.date >= bucket.start && session.date <= bucket.end);
+    return { ...bucket, minutes: entries.reduce((sum, session) => sum + session.minutes, 0), sessions: entries.length };
+  });
+  return {
+    metric: 'study_minutes',
+    unit: request.unit,
+    granularity: request.granularity,
+    count: request.count,
+    comparison: request.comparison,
+    timezone: request.timezone,
+    start: range.start,
+    end: range.end,
+    periods,
+    minutes: periods.reduce((sum, period) => sum + period.minutes, 0),
+    sessions: periods.reduce((sum, period) => sum + period.sessions, 0),
+    hasActivity: periods.some(period => period.sessions > 0),
+  };
 }

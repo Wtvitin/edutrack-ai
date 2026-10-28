@@ -90,7 +90,7 @@ test('orchestrator rejeita resposta estruturada incompatível após Tool', async
   const { db, user } = await fixture();
   let calls = 0;
   const provider = { async complete() { calls += 1; return calls === 1 ? { model: 'mock', content: null, toolCalls: [{ id: 'read-1', name: 'list_tasks', arguments: {} }] } : { model: 'mock', content: JSON.stringify({ type: 'unknown', value: 'não' }) }; } };
-  await assert.rejects(() => chatWithAgent({ db, user, message: 'Quais tarefas?', config: config(), provider, tools: createAgentToolRegistry({ analytics: async () => ({}) }) }), error => error.code === 'invalid-structured-output');
+  await assert.rejects(() => chatWithAgent({ db, user, message: 'Quais tarefas?', config: config(), provider, tools: createAgentToolRegistry({ analytics: async () => ({}) }) }), error => error.code === 'schema-validation-failed');
 });
 
 test('conversationId de outra conta é isolado', async () => {
