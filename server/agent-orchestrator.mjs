@@ -125,13 +125,14 @@ function completeAnalysisFromTools(content, toolOutputs) {
   if (!trends) return content;
   const periods = trends.periods;
   if (!Array.isArray(periods) || !periods.length || periods.some(period => !Number.isInteger(period.minutes) || period.minutes < 0 || !Number.isInteger(period.sessions) || period.sessions < 0)) throw new AgentError('Os dados temporais retornados pela Tool sao invalidos.', 503, 'invalid-trend-data');
-  const metrics = { metric: trends.metric, unit: trends.unit, granularity: trends.granularity, count: trends.count, comparison: trends.comparison, start: trends.start, end: trends.end, minutes: trends.minutes, sessions: trends.sessions };
-  if (!trends.hasActivity) return JSON.stringify({ type: 'analysis', analysis: 'Nao ha sessoes de estudo registradas no periodo solicitado para comparar.', metrics });
+  const metrics = { metric: trends.metric, unit: trends.unit, granularity: trends.granularity, count: trends.count, comparison: trends.comparison, start: trends.start, end: trends.end, recordStart: trends.recordStart, recordEnd: trends.recordEnd, minutes: trends.minutes, sessions: trends.sessions };
+  if (!trends.hasActivity) return JSON.stringify({ type: 'analysis', analysis: `A consulta cobriu ${trends.start} a ${trends.end}; nao ha sessoes de estudo registradas nesse intervalo.`, metrics });
+  const coverageNote = trends.recordStart && trends.recordStart > trends.start ? ` Os registros encontrados no intervalo vao de ${trends.recordStart} a ${trends.recordEnd}; periodos sem sessoes registradas nao foram preenchidos artificialmente.` : '';
   const data = periods.map(period => ({ period: period.label, start: period.start, end: period.end, minutes: period.minutes, sessions: period.sessions }));
   const chartType = trends.chartType === 'line' ? 'line' : 'bar';
   return JSON.stringify({
     type: 'analysis',
-    analysis: `Foram registrados ${trends.minutes} minutos de estudo entre ${trends.start} e ${trends.end}, organizados em ${trends.periods.length} periodos ${trends.granularity === 'month' ? 'mensais' : trends.granularity === 'week' ? 'semanais' : 'diarios'}.`,
+    analysis: `A consulta cobriu ${trends.start} a ${trends.end}: foram registrados ${trends.minutes} minutos de estudo em ${trends.periods.length} periodos ${trends.granularity === 'month' ? 'mensais' : trends.granularity === 'week' ? 'semanais' : 'diarios'}.${coverageNote}`,
     metrics,
     chart: {
       type: chartType,
@@ -145,6 +146,15 @@ function completeAnalysisFromTools(content, toolOutputs) {
       datasetVersion: 'get_study_trends-v3',
     },
   });
+}
+
+function requiresTemporalTrend(message, temporal) {
+  if (!temporal || temporal.error) return false;
+  const normalized = message.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const requestsComparison = /\b(compare|comparar|comparacao|comparativo|comparativa)\b/.test(normalized);
+  const requestsChart = /\b(grafico|graficos|visualizacao)\b/.test(normalized);
+  const namesStudyMetric = /\b(estudo|estudados|minutos|desempenho|performance)\b/.test(normalized);
+  return requestsChart || (temporal.explicit && requestsComparison && namesStudyMetric);
 }
 
 function finalToolType(current, definition) {
@@ -176,11 +186,14 @@ export async function chatWithAgent({ db, user, message, conversationId, config 
   let expectedType;
   let iterations = 0;
   let toolCallCount = 0;
+  const forceTemporalTrend = requiresTemporalTrend(input.data.message, requestedTemporal);
   while (iterations < config.maxIterations) {
     iterations += 1;
     let result;
     try {
-      result = await agentProvider.complete({
+      result = forceTemporalTrend && iterations === 1
+        ? { model: config.model, content: null, toolCalls: [{ id: randomUUID(), name: 'get_study_trends', arguments: {} }] }
+        : await agentProvider.complete({
         model: config.model,
         messages,
         tools: expectedType ? undefined : registry.list(),

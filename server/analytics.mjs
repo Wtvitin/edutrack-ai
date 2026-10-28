@@ -88,6 +88,9 @@ export async function prepareTemporalAnalytics(data, request, { today } = {}) {
   const buckets = temporalBuckets(request, range);
   let sessions = data.sessions;
   if (request.subject && request.subject !== 'all') sessions = sessions.filter(session => session.subjectId === request.subject);
+  const intervalSessions = sessions.filter(session => session.date >= range.start && session.date <= range.end);
+  const recordStart = intervalSessions.length ? intervalSessions.reduce((earliest, session) => session.date < earliest ? session.date : earliest, intervalSessions[0].date) : null;
+  const recordEnd = intervalSessions.length ? intervalSessions.reduce((latest, session) => session.date > latest ? session.date : latest, intervalSessions[0].date) : null;
   const periods = buckets.map(bucket => {
     const entries = sessions.filter(session => session.date >= bucket.start && session.date <= bucket.end);
     return { ...bucket, minutes: entries.reduce((sum, session) => sum + session.minutes, 0), sessions: entries.length };
@@ -101,6 +104,8 @@ export async function prepareTemporalAnalytics(data, request, { today } = {}) {
     timezone: request.timezone,
     start: range.start,
     end: range.end,
+    recordStart,
+    recordEnd,
     periods,
     minutes: periods.reduce((sum, period) => sum + period.minutes, 0),
     sessions: periods.reduce((sum, period) => sum + period.sessions, 0),

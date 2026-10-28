@@ -18,8 +18,14 @@
 - [x] 3.2 Cobrir fluxo ponta a ponta de quatro semanas e normalizacao.
 - [x] 3.3 Executar validacao ampla, lint, build e revisar diff final.
 
-## 4. Corre??es posteriores de exibi??o e resili?ncia
+## 4. Correcoes posteriores de exibicao e resiliencia
 
-- [x] 4.1 Usar resultado temporal validado para concluir gr?fico se a chamada textual opcional do Provider falhar.
-- [x] 4.2 Localizar metadados e r?tulos temporais na apresenta??o, mantendo identificadores internos.
-- [x] 4.3 Validar regress?es de quatro semanas e gr?ficos mensais.
+- [x] 4.1 Usar resultado temporal validado para concluir grafico se a chamada textual opcional do Provider falhar.
+- [x] 4.2 Localizar metadados e rotulos temporais na apresentacao, mantendo identificadores internos.
+- [x] 4.3 Validar regressoes de quatro semanas e graficos mensais.
+
+## 5. Validacao final P0
+
+- [x] 5.1 Roteia pedidos de grafico/comparacao temporal explicitamente para `get_study_trends` antes do Provider escolher ferramenta.
+- [x] 5.2 Testa a frase original de ponta a ponta, intervalos mensais, semanas, historico disponivel e falhas de consulta/Provider.
+- [x] 5.3 Expoe intervalo consultado e limites das sessoes encontradas no texto final.

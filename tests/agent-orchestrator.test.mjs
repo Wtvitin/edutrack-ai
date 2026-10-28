@@ -6,6 +6,7 @@ import { readAgentConfig } from '../server/agent-config.mjs';
 import { createAgentToolRegistry } from '../server/agent-tools.mjs';
 import { chatWithAgent } from '../server/agent-orchestrator.mjs';
 import { createAgentProvider } from '../server/agent-provider.mjs';
+import { normalizeTemporalRequest, shiftDate, temporalPeriodDates } from '../server/temporal.mjs';
 
 async function fixture() {
   const db = await openDatabase({ directory: 'memory://', url: '' });
@@ -75,6 +76,90 @@ test('orchestrator entrega grafico semanal validado se o provider falha apos a c
   assert.deepEqual(result.response.chart.data.map(point => point.minutes), [10, 20, 30, 40]);
   assert.equal(result.response.chart.data[0].period, '2026-10-05 a 2026-10-11');
   assert.equal(result.metadata.textFallback, true);
+});
+
+test('frase original encaminha dois meses ate consulta, agregacao e grafico', async () => {
+  const { db, user } = await fixture();
+  const message = 'fa\u00e7a um grafico comparativo das ultimas 2 meses';
+  const expectedTemporal = normalizeTemporalRequest(message);
+  const expectedRange = temporalPeriodDates(expectedTemporal);
+  let snapshotUser;
+  const tools = createAgentToolRegistry({
+    readSnapshot: async (currentDb, currentUser) => {
+      snapshotUser = currentUser;
+      return { data: { subjects: [], tasks: [], sessions: [
+        { id: 'month-previous', subjectId: '', date: expectedRange.start, minutes: 23 },
+        { id: 'month-current', subjectId: '', date: expectedRange.end, minutes: 41 },
+      ] } };
+    },
+  });
+  let providerCalls = 0;
+  const provider = { async complete(request) {
+    providerCalls += 1;
+    assert.match(request.messages.at(-1).content, /2026|periods|study_minutes/);
+    return { model: 'mock', content: JSON.stringify({ type: 'analysis', analysis: 'A consulta foi de 7 dias.', metrics: { days: 7 } }) };
+  } };
+
+  const result = await chatWithAgent({ db, user, message, config: config(), provider, tools });
+  const execution = (await db.query("SELECT input_json,output_json FROM ai_tool_executions WHERE conversation_id=$1 AND tool_name='get_study_trends'", [result.conversationId])).rows[0];
+  const args = typeof execution.input_json === 'string' ? JSON.parse(execution.input_json) : execution.input_json;
+  const toolOutput = typeof execution.output_json === 'string' ? JSON.parse(execution.output_json) : execution.output_json;
+
+  assert.equal(snapshotUser, user);
+  assert.equal(providerCalls, 1);
+  assert.equal(args.temporal.unit, 'month');
+  assert.equal(args.temporal.count, 2);
+  assert.deepEqual({ start: toolOutput.start, end: toolOutput.end }, expectedRange);
+  assert.deepEqual(toolOutput.periods.map(period => period.label), [expectedRange.start.slice(0, 7), expectedRange.end.slice(0, 7)]);
+  assert.deepEqual(toolOutput.periods.map(period => period.minutes), [23, 41]);
+  assert.equal(toolOutput.recordStart, expectedRange.start);
+  assert.equal(toolOutput.recordEnd, expectedRange.end);
+  assert.equal(result.response.type, 'analysis');
+  assert.equal(result.response.metrics.unit, 'month');
+  assert.equal(result.response.metrics.count, 2);
+  assert.match(result.response.analysis, /64 minutos/);
+  assert.equal(result.response.chart.title, 'Minutos estudados por mes');
+  assert.deepEqual(result.response.chart.data.map(point => point.minutes), toolOutput.periods.map(period => period.minutes));
+  assert.deepEqual(result.response.chart.data.map(point => point.period), toolOutput.periods.map(period => period.label));
+});
+
+test('duas requisicoes com periodos distintos mantem cada consulta independente', async () => {
+  const { db, user } = await fixture();
+  const provider = { async complete() { return { model: 'mock', content: JSON.stringify({ type: 'analysis', analysis: 'Resumo.', metrics: {} }) }; } };
+  const firstTemporal = normalizeTemporalRequest('Compare meu desempenho nos ultimos 2 meses');
+  const tools = createAgentToolRegistry({ readSnapshot: async () => ({ data: { subjects: [], tasks: [], sessions: [{ id: 'current', subjectId: '', date: firstTemporal.today, minutes: 12 }] } }) });
+  const first = await chatWithAgent({ db, user, message: 'Compare meu desempenho nos ultimos 2 meses', config: config(), provider, tools });
+  const second = await chatWithAgent({ db, user, conversationId: first.conversationId, message: 'Compare meu desempenho nas ultimas 4 semanas', config: config(), provider, tools });
+  const rows = (await db.query("SELECT input_json FROM ai_tool_executions WHERE conversation_id=$1 AND tool_name='get_study_trends' ORDER BY created_at,id", [first.conversationId])).rows;
+  const args = rows.map(row => typeof row.input_json === 'string' ? JSON.parse(row.input_json) : row.input_json);
+  assert.deepEqual(args.map(item => [item.temporal.unit, item.temporal.count]), [['month', 2], ['week', 4]]);
+  assert.equal(first.response.chart.data.length, 2);
+  assert.equal(second.response.chart.data.length, 4);
+});
+
+test('consulta mensal com somente sete dias registrados mantem meses e nao afirma janela de sete dias', async () => {
+  const { db, user } = await fixture();
+  const message = 'fa\u00e7a um grafico comparativo das ultimas 2 meses';
+  const temporal = normalizeTemporalRequest(message);
+  const range = temporalPeriodDates(temporal);
+  const sessions = Array.from({ length: 7 }, (_, index) => ({ id: String(index + 1), subjectId: '', date: shiftDate(range.end, index - 6), minutes: 5 }));
+  const tools = createAgentToolRegistry({ readSnapshot: async () => ({ data: { subjects: [], tasks: [], sessions } }) });
+  const provider = { async complete() { return { model: 'mock', content: 'Dados do painel dos ultimos 7 dias.' }; } };
+  const result = await chatWithAgent({ db, user, message, config: config(), provider, tools });
+  assert.deepEqual([result.response.metrics.unit, result.response.metrics.count], ['month', 2]);
+  assert.deepEqual(result.response.chart.data.map(point => point.period), [range.start.slice(0, 7), range.end.slice(0, 7)]);
+  assert.deepEqual(result.response.chart.data.map(point => point.minutes), [0, 35]);
+  assert.match(result.response.analysis, new RegExp(shiftDate(range.end, -6)));
+  assert.match(result.response.analysis, new RegExp(range.end));
+  assert.doesNotMatch(result.response.analysis, /7 dias/);
+});
+
+test('falha da consulta temporal nao e convertida em grafico deterministico', async () => {
+  const { db, user } = await fixture();
+  const message = 'fa\u00e7a um grafico comparativo das ultimas 2 meses';
+  const tools = createAgentToolRegistry({ readSnapshot: async () => { throw Object.assign(new Error('consulta indisponivel'), { code: 'db-unavailable' }); } });
+  const provider = { async complete() { return { model: 'mock', content: JSON.stringify({ type: 'analysis', analysis: 'sem consulta', metrics: {} }) }; } };
+  await assert.rejects(() => chatWithAgent({ db, user, message, config: config(), provider, tools }), error => error.code === 'study-trends-unavailable');
 });
 
 test('orchestrator persiste conversa e resposta text', async () => {

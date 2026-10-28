@@ -28,6 +28,15 @@ test('normaliza meses e comparacao entre semana atual e anterior', () => {
   assert.equal(weeks.count, 2);
 });
 
+test('interpreta o texto da solicitacao P0 e preserva o default sem periodo', () => {
+  const exact = normalizeTemporalRequest('fa\u00e7a um grafico comparativo das ultimas 2 meses', { today: '2026-10-27' });
+  const variant = normalizeTemporalRequest('Compare os \u00faltimos dois meses de estudo', { today: '2026-10-27' });
+  const defaults = normalizeTemporalRequest('Mostre um gr\u00e1fico do meu estudo', { today: '2026-10-27' });
+  assert.deepEqual([exact.unit, exact.count, exact.granularity], ['month', 2, 'month']);
+  assert.deepEqual([variant.unit, variant.count, variant.granularity], ['month', 2, 'month']);
+  assert.deepEqual([defaults.unit, defaults.count, defaults.explicit], ['week', 2, false]);
+});
+
 test('normaliza intervalo de datas e rejeita limites invalidos', () => {
   const request = normalizeTemporalRequest('Mostre o periodo de 2026-10-01 a 2026-10-03', { today: '2026-10-27' });
   assert.deepEqual({ start: request.start, end: request.end, count: request.count }, { start: '2026-10-01', end: '2026-10-03', count: 3 });
