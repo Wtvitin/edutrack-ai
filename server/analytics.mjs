@@ -1,6 +1,4 @@
-import { monthEnd, monthStart, shiftDate, temporalPeriodDates } from './temporal.mjs';
-
-const localDate = date => date.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+import { localDate, monthEnd, monthStart, shiftDate, temporalPeriodDates } from './temporal.mjs';
 
 export async function prepareAnalytics(data, days = 7, subject = 'all', { today = localDate(new Date()) } = {}) {
     const start = shiftDate(today, -(days - 1));
