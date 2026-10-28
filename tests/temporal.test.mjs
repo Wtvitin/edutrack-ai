@@ -19,8 +19,10 @@ test('normaliza semanas com numeros em algarismos e palavras', () => {
 
 test('normaliza meses e comparacao entre semana atual e anterior', () => {
   const months = normalizeTemporalRequest('Compare meu desempenho nos ultimos 6 meses', { today: '2026-10-27' });
+  const previousMonths = normalizeTemporalRequest('Compare os dois ultimos meses', { today: '2026-10-27' });
   const weeks = normalizeTemporalRequest('Compare esta semana com a semana passada', { today: '2026-10-27' });
   assert.deepEqual({ unit: months.unit, count: months.count, granularity: months.granularity }, { unit: 'month', count: 6, granularity: 'month' });
+  assert.equal(previousMonths.count, 2);
   assert.equal(temporalPeriodDates(months).start, '2026-05-01');
   assert.equal(weeks.comparison, 'current_vs_previous');
   assert.equal(weeks.count, 2);

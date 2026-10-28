@@ -29,8 +29,8 @@ const monday = value => {
 const wordOrNumber = value => numberWords[value] || Number(value);
 
 function matchCount(message, unitPattern) {
-  const match = message.match(new RegExp(`(?:ultim[oa]s?|durante|nos?|das?)\\s+([0-9]+|[a-z]+)\\s+${unitPattern}`, 'i'));
-  const count = match ? wordOrNumber(stripAccents(match[1])) : null;
+  const match = message.match(new RegExp(`(?:ultim[oa]s?|durante|nos?|das?)\\s+([0-9]+|[a-z]+)\\s+${unitPattern}|(?:os|as)?\\s*([0-9]+|[a-z]+)\\s+ultim[oa]s?\\s+${unitPattern}`, 'i'));
+  const count = match ? wordOrNumber(stripAccents(match[1] || match[2])) : null;
   return Number.isInteger(count) ? count : null;
 }
 
