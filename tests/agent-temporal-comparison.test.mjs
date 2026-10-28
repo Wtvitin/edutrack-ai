@@ -90,3 +90,13 @@ test('analytics produz dois buckets mensais, incluindo o mes atual parcial', asy
   assert.equal(result.periods[1].complete, false);
   assert.equal(result.end, '2026-10-27');
 });
+
+test('analytics preserva seis meses e trinta dias sem reduzir para sete', async () => {
+  const months = normalizeTemporalRequest('Compare meu desempenho nos ultimos 6 meses', { today: '2026-10-27' });
+  const monthResult = await prepareTemporalAnalytics(snapshot([{ date: '2026-05-03', minutes: 5 }, { date: '2026-10-27', minutes: 7 }]), months);
+  const days = normalizeTemporalRequest('Mostre meus minutos estudados nos ultimos 30 dias', { today: '2026-10-27' });
+  const dayResult = await prepareTemporalAnalytics(snapshot([{ date: '2026-10-01', minutes: 4 }, { date: '2026-10-27', minutes: 8 }]), days);
+  assert.equal(monthResult.periods.length, 6);
+  assert.equal(dayResult.periods.length, 30);
+  assert.equal(dayResult.periods[0].start, '2026-09-28');
+});
