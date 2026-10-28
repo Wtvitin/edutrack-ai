@@ -132,11 +132,12 @@ test('duas requisicoes com periodos distintos mantem cada consulta independente'
   const tools = createAgentToolRegistry({ readSnapshot: async () => ({ data: { subjects: [], tasks: [], sessions: [{ id: 'current', subjectId: '', date: firstTemporal.today, minutes: 12 }] } }) });
   const first = await chatWithAgent({ db, user, message: 'Compare meu desempenho nos ultimos 2 meses', config: config(), provider, tools });
   const second = await chatWithAgent({ db, user, conversationId: first.conversationId, message: 'Compare meu desempenho nas ultimas 4 semanas', config: config(), provider, tools });
+  const third = await chatWithAgent({ db, user, conversationId: first.conversationId, message: 'Compare meu desempenho nos ultimos 6 meses', config: config(), provider, tools });
+  const fourth = await chatWithAgent({ db, user, conversationId: first.conversationId, message: 'Mostre um grafico do meu estudo', config: config(), provider, tools });
   const rows = (await db.query("SELECT input_json FROM ai_tool_executions WHERE conversation_id=$1 AND tool_name='get_study_trends' ORDER BY created_at,id", [first.conversationId])).rows;
   const args = rows.map(row => typeof row.input_json === 'string' ? JSON.parse(row.input_json) : row.input_json);
-  assert.deepEqual(args.map(item => [item.temporal.unit, item.temporal.count]), [['month', 2], ['week', 4]]);
-  assert.equal(first.response.chart.data.length, 2);
-  assert.equal(second.response.chart.data.length, 4);
+  assert.deepEqual(args.map(item => [item.temporal.unit, item.temporal.count]), [['month', 2], ['week', 4], ['month', 6], ['week', 2]]);
+  assert.deepEqual([first.response.chart.data.length, second.response.chart.data.length, third.response.chart.data.length, fourth.response.chart.data.length], [2, 4, 6, 2]);
 });
 
 test('consulta mensal com somente sete dias registrados mantem meses e nao afirma janela de sete dias', async () => {
