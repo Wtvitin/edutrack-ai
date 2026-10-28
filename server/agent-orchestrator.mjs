@@ -178,14 +178,24 @@ export async function chatWithAgent({ db, user, message, conversationId, config 
   let toolCallCount = 0;
   while (iterations < config.maxIterations) {
     iterations += 1;
-    const result = await agentProvider.complete({
-      model: config.model,
-      messages,
-      tools: expectedType ? undefined : registry.list(),
-      responseFormat: expectedType ? expectedResponse(expectedType) : undefined,
-      temperature: 0.2,
-      maxTokens: 1600,
-    });
+    let result;
+    try {
+      result = await agentProvider.complete({
+        model: config.model,
+        messages,
+        tools: expectedType ? undefined : registry.list(),
+        responseFormat: expectedType ? expectedResponse(expectedType) : undefined,
+        temperature: 0.2,
+        maxTokens: 1600,
+      });
+    } catch (error) {
+      const trends = toolOutputs.get('get_study_trends');
+      if (!trends || expectedType !== 'analysis' || !String(error?.code || '').startsWith('provider-')) throw error;
+      const response = parseResponse(completeAnalysisFromTools('', toolOutputs), expectedType, executedToolNames);
+      await persistMessage(db, currentConversationId, 'ASSISTANT', JSON.stringify(response));
+      await db.query('UPDATE ai_conversations SET updated_at=now() WHERE id=$1 AND user_id=$2', [currentConversationId, user.id]);
+      return { conversationId: currentConversationId, response, metadata: { model: config.model, iterations, toolCalls: toolCallCount, textFallback: true } };
+    }
     const calls = Array.isArray(result.toolCalls) ? result.toolCalls : [];
     if (!calls.length) {
       if (failedToolNames.has('get_study_trends')) throw new AgentError('Nao foi possivel consultar o historico de sessoes de estudo.', 503, 'study-trends-unavailable');

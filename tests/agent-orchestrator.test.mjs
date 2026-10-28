@@ -53,13 +53,13 @@ test('orchestrator preserva thoughtSignature ao retomar conversa Gemini apos Too
   assert.equal(firstRequests.length, 2);
 });
 
-test('orchestrator preserva quatro semanas ate o grafico e ignora JSON textual do provider', async () => {
+test('orchestrator entrega grafico semanal validado se o provider falha apos a consulta', async () => {
   const { db, user } = await fixture();
   let calls = 0;
   const provider = { async complete() {
     calls += 1;
     if (calls === 1) return { model: 'mock', content: null, toolCalls: [{ id: 'trend-4-weeks', name: 'get_study_trends', arguments: {} }] };
-    return { model: 'mock', content: JSON.stringify({ type: 'line', title: 'JSON indevido', data: [], series: [] }) };
+    throw Object.assign(new Error('provider falhou apos consulta'), { code: 'provider-timeout' });
   } };
   const tools = createAgentToolRegistry({
     readSnapshot: async () => ({ data: { subjects: [], tasks: [], sessions: [
@@ -73,7 +73,8 @@ test('orchestrator preserva quatro semanas ate o grafico e ignora JSON textual d
   assert.equal(result.response.type, 'analysis');
   assert.equal(result.response.chart.data.length, 4);
   assert.deepEqual(result.response.chart.data.map(point => point.minutes), [10, 20, 30, 40]);
-  assert.equal(result.response.chart.data[0].period, 'Semana 1');
+  assert.equal(result.response.chart.data[0].period, '2026-10-05 a 2026-10-11');
+  assert.equal(result.metadata.textFallback, true);
 });
 
 test('orchestrator persiste conversa e resposta text', async () => {

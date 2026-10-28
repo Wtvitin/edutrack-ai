@@ -4,6 +4,7 @@ import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { ArrowUp, CalendarDays, Check, Clock3, ListChecks, MessageCircle, Sparkles, Target, WandSparkles } from 'lucide-react';
 import { formatMinutes, lastSevenDays, type StudyData } from '@/lib/edutrack';
 import { AgentChart } from './agent-chart';
+import { analyticsMetadata, formatAnalyticsCount } from './analytics-presentation.mjs';
 import { chatWithAgent, type AgentResponse } from './agent-api';
 import { Heading, type ViewProps } from './views';
 
@@ -44,8 +45,12 @@ function ActionResult({ response }: { response: Extract<AgentResponse, { type: '
 }
 
 function AnalysisDetails({ response }: { response: Extract<AgentResponse, { type: 'analysis' }> }) {
-  const metrics = Object.entries(response.metrics).slice(0, 4);
-  return <><div className="agent-metric-grid">{metrics.map(([key, value]) => <div className="agent-metric" key={key}><span>{key.replaceAll('_', ' ')}</span><strong>{String(value)}</strong></div>)}</div>{response.chart && <AgentChart chart={response.chart}/>}</>;
+  const metrics = Object.entries(response.metrics).slice(0, 4).flatMap(([key, value]) => {
+    const item = analyticsMetadata(key, value);
+    if (!item) return [];
+    return [{ ...item, value: key === 'count' ? formatAnalyticsCount(value, response.metrics.unit) : item.value }];
+  });
+  return <><div className="agent-metric-grid">{metrics.map(({ label, value }) => <div className="agent-metric" key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>{response.chart && <AgentChart chart={response.chart}/>}</>;
 }
 
 export function AgentView({ data, editTask }: Pick<ViewProps, 'data' | 'editTask'>) {

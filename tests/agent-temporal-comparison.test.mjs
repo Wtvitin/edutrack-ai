@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { prepareAnalytics, prepareTemporalAnalytics } from '../server/analytics.mjs';
 import { normalizeTemporalRequest } from '../server/temporal.mjs';
 import { createAgentToolRegistry } from '../server/agent-tools.mjs';
+import { analyticsMetadata, formatAnalyticsCount, formatAnalyticsPeriod } from '../components/edutrack/analytics-presentation.mjs';
 
 const snapshot = sessions => ({ subjects: [], tasks: [], sessions });
 
@@ -99,4 +100,17 @@ test('analytics preserva seis meses e trinta dias sem reduzir para sete', async 
   assert.equal(monthResult.periods.length, 6);
   assert.equal(dayResult.periods.length, 30);
   assert.equal(dayResult.periods[0].start, '2026-09-28');
+});
+
+test('analytics localiza metadados, pluraliza quantidades e formata periodos', () => {
+  assert.deepEqual(analyticsMetadata('metric', 'study_minutes'), { label: 'M\u00e9trica', value: 'Minutos estudados' });
+  assert.deepEqual(analyticsMetadata('unit', 'week'), { label: 'Unidade', value: 'Semana' });
+  assert.deepEqual(analyticsMetadata('granularity', 'month'), { label: 'Granularidade', value: 'Mensal' });
+  assert.equal(formatAnalyticsCount(1, 'week'), '1 semana');
+  assert.equal(formatAnalyticsCount(4, 'week'), '4 semanas');
+  assert.equal(formatAnalyticsCount(6, 'month'), '6 meses');
+  assert.equal(formatAnalyticsPeriod('2026-05'), 'mai. de 2026');
+  assert.equal(formatAnalyticsPeriod('2026-10-05 a 2026-10-11'), '05/10 - 11/10');
+  assert.equal(analyticsMetadata('metric', 'future_metric')?.value, 'Future Metric');
+  assert.equal(analyticsMetadata('unknown', '[object Object]'), null);
 });

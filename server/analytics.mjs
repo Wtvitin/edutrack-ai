@@ -73,7 +73,8 @@ function temporalBuckets(request, range) {
   if (request.unit === 'week') return Array.from({ length: request.count }, (_, index) => {
     const start = shiftDate(range.start, index * 7);
     const naturalEnd = shiftDate(start, 6);
-    return { start, end: naturalEnd < range.end ? naturalEnd : range.end, label: `Semana ${index + 1}`, complete: naturalEnd <= range.end };
+    const end = naturalEnd < range.end ? naturalEnd : range.end;
+    return { start, end, label: `${start} a ${end}`, complete: naturalEnd <= range.end };
   });
   return Array.from({ length: request.count }, (_, index) => {
     const start = monthShift(range.start, index);
