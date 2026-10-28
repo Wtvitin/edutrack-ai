@@ -12,11 +12,12 @@ test('accounts, verification, isolation, audit and password reset',async()=>{
   let cookie='';
   const call=async(path,data,method=data?'POST':'GET')=>{const response=await fetch(origin+path,{method,headers:{Origin:origin,'Content-Type':'application/json',Cookie:cookie},body:data?JSON.stringify(data):undefined});return {status:response.status,body:await response.json(),cookie:response.headers.get('set-cookie')?.split(';')[0]};};
   try{
+    assert.equal((await call('/api/health')).body.localMailbox,true);
     assert.equal((await call('/api/data')).status,401);
     assert.equal((await call('/api/notifications')).status,401);
     assert.equal((await call('/api/auth/register',{name:'Teste',email:'tester@example.test',password:'testing-pass-123'})).status,200);
     assert.equal((await call('/api/auth/login',{email:'tester@example.test',password:'testing-pass-123'})).status,403);
-    const mail=(await call('/api/dev/mail')).body.messages[0];const token=new URL(mail.link).searchParams.get('token');
+    const mail=(await call('/api/dev/mail')).body.messages[0];assert.equal(mail.recipient,'tester@example.test');assert.match(mail.subject,/Confirme seu e-mail/);const token=new URL(mail.link).searchParams.get('token');
     assert.equal((await call('/api/auth/verify',{token})).status,200);
     assert.equal((await call('/api/auth/verify',{token})).status,400);
     const login=await call('/api/auth/login',{email:'tester@example.test',password:'testing-pass-123'});assert.equal(login.status,200);cookie=login.cookie;

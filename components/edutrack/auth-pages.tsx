@@ -15,7 +15,7 @@ function subscribeToLocation(onChange:()=>void){window.addEventListener('popstat
 const readToken=()=>new URLSearchParams(window.location.search).get('token')||'';
 const emptyToken=()=>'';
 export function AuthPage({page}:{page:string}){
-  const [visible,setVisible]=useState(false),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),[success,setSuccess]=useState(false),[resend,setResend]=useState(false);
+  const [visible,setVisible]=useState(false),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),[success,setSuccess]=useState(false),[resend,setResend]=useState(false),[localMailbox,setLocalMailbox]=useState(false);
   const token=useSyncExternalStore(subscribeToLocation,readToken,emptyToken);
   const content=info[page]||info.login;
   async function submit(e:FormEvent<HTMLFormElement>){
@@ -25,7 +25,11 @@ export function AuthPage({page}:{page:string}){
       const path=resend?'/auth/resend':({login:'/auth/login',cadastro:'/auth/register','recuperar-senha':'/auth/request-reset','nova-senha':'/auth/reset','verificar-email':'/auth/verify'} as Record<string,string>)[page];
       const result=await api<{message?:string}>(path,{...fields,token});
       if(page==='login'&&!resend){localStorage.removeItem('edutrack-mode');await navigateTo('/');return;}
-      setMessage(result.message||'Concluído.');setSuccess(true);
+      setMessage(result.message||'Concluído.');setSuccess(true);setLocalMailbox(false);
+      if(page==='cadastro'||page==='recuperar-senha'||resend){
+        try{const status=await api<{localMailbox:boolean}>('/health');setLocalMailbox(status.localMailbox);}
+        catch{}
+      }
       if(page==='nova-senha'||page==='verificar-email')window.history.replaceState(null,'',window.location.pathname);
     }catch(e){setMessage(e instanceof Error?e.message:'Não foi possível concluir.');}finally{setBusy(false);}
   }
@@ -38,6 +42,7 @@ export function AuthPage({page}:{page:string}){
       {page==='verificar-email'&&!resend&&<div className="email-illustration"><Mail size={42}/><p>{token?'Clique abaixo para confirmar seu endereço.':'Abra o link enviado ao seu e-mail ou solicite uma nova confirmação.'}</p></div>}
       <button className="button primary full-width" disabled={busy||((page==='verificar-email'||page==='nova-senha')&&!token&&!resend)||success&&['nova-senha','verificar-email'].includes(page)&&!resend}>{busy?'Aguarde…':resend?'Enviar novo link':content.button}<ArrowRight size={16}/></button>
       {message&&<p className={`form-feedback ${success?'success':'error'}`} role={success?'status':'alert'}>{message}</p>}
+      {success&&localMailbox&&<p className="form-feedback success">Este ambiente não envia e-mails externos. Consulte sua mensagem em <Link href="/emails-locais">E-mails de teste</Link>.</p>}
     </form>
     {['login','verificar-email'].includes(page)&&<button className="text-link resend-button" onClick={()=>{setResend(!resend);setMessage('');setSuccess(false);}}>{resend?'Voltar':'Não recebi a confirmação'}</button>}
     <div className="auth-switch">{page==='login'?<>Ainda não tem conta? <Link href="/cadastro">Criar conta</Link></>:<Link href="/login">Voltar para entrar</Link>}</div><div className="auth-divider"><span>ou conheça agora</span></div><Link className="button secondary full-width" href="/demo">Explorar sem criar conta<ArrowRight size={16}/></Link><p className="auth-policy">Confira a <Link href="/privacidade">política de privacidade</Link>. Nunca compartilhe sua senha.</p></div></main></div>;
