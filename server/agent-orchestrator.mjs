@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { readAgentConfig, buildSystemPrompt, AgentError } from './agent-config.mjs';
-import { actionResponseSchema, agentChatInputSchema, analysisResponseSchema, responseJsonSchemas, structuredResponseSchema, textResponseSchema, toolCallSchema } from './agent-schemas.mjs';
+import { actionResponseSchema, agentChatInputSchema, analysisResponseSchema, chartSpecificationSchema, responseJsonSchemas, structuredResponseSchema, textResponseSchema, toolCallSchema } from './agent-schemas.mjs';
 import { createAgentProvider } from './agent-provider.mjs';
 import { createAgentToolRegistry } from './agent-tools.mjs';
 import { normalizeTemporalRequest } from './temporal.mjs';
@@ -59,11 +59,15 @@ function expectedResponse(type) {
 }
 
 function jsonCandidate(content) {
-  const text = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+  const raw = content.trim();
+  const text = raw.startsWith('```') ? raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim() : raw;
   try { return { value: JSON.parse(text), explanation: '' }; } catch {}
-  const match = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-  if (!match) return null;
-  try { return { value: JSON.parse(match[1]), explanation: text.replace(match[0], '').trim() }; } catch { return null; }
+  const fenceStart = text.indexOf('```');
+  if (fenceStart < 0) return null;
+  const codeStart = text.indexOf('\n', fenceStart);
+  const fenceEnd = codeStart >= 0 ? text.indexOf('```', codeStart + 1) : -1;
+  if (codeStart < 0 || fenceEnd < 0) return null;
+  try { return { value: JSON.parse(text.slice(codeStart + 1, fenceEnd).trim()), explanation: `${text.slice(0, fenceStart)}${text.slice(fenceEnd + 3)}`.trim() }; } catch { return null; }
 }
 
 function normalizeResponseValue(content) {
@@ -71,21 +75,28 @@ function normalizeResponseValue(content) {
   if (!candidate) return null;
   let value = candidate.value;
   if (value && typeof value === 'object' && value.response && typeof value.response === 'object') value = value.response;
+  if (value && typeof value === 'object' && value.type === 'analysis' && typeof value.analysis === 'string') {
+    const embedded = jsonCandidate(value.analysis);
+    if (embedded?.value && typeof embedded.value === 'object' && embedded.value.data && embedded.value.series) {
+      value = { ...value, analysis: embedded.explanation || 'Analise visual gerada a partir dos seus dados.', chart: embedded.value };
+    }
+  }
   if (value && typeof value === 'object' && value.chart && !value.type) value = { type: 'analysis', analysis: candidate.explanation || 'Analise visual gerada a partir dos seus dados.', metrics: {}, chart: value.chart };
   if (value && typeof value === 'object' && ['line', 'bar', 'area', 'comparison'].includes(value.type) && value.data && value.series) value = { type: 'analysis', analysis: candidate.explanation || 'Analise visual gerada a partir dos seus dados.', metrics: {}, chart: value };
   if (candidate.explanation && value && value.type === 'analysis' && !value.analysis) value.analysis = candidate.explanation;
   return value;
 }
 
-function parseResponse(content, expectedType, executedTools) {
-  if (typeof content !== 'string' || !content.trim()) throw new AgentError('O Agent retornou uma resposta vazia.', 503, 'invalid-structured-output');
+export function parseResponse(content, expectedType, executedTools = new Set()) {
+  if (typeof content !== 'string' || !content.trim()) throw new AgentError('O Agent retornou uma resposta vazia.', 503, 'empty-response');
   const candidate = normalizeResponseValue(content);
   if (!candidate) {
-    if (expectedType) throw new AgentError('O Agent retornou uma resposta estruturada inválida.', 503, 'invalid-structured-output');
+    if (expectedType) throw new AgentError('O Agent retornou JSON estruturado malformado.', 503, 'malformed-json');
     const parsedText = textResponseSchema.safeParse({ type: 'text', content: content.trim() });
     if (!parsedText.success) throw new AgentError('O Agent retornou uma resposta inválida.', 503, 'invalid-structured-output');
     return parsedText.data;
   }
+  if (candidate.chart && !chartSpecificationSchema.safeParse(candidate.chart).success) throw new AgentError('A especificacao do grafico e invalida.', 503, 'invalid-chart-specification');
   const parsed = structuredResponseSchema.safeParse(candidate);
   if (!parsed.success) throw new AgentError('A resposta estruturada nao passou na validacao do schema.', 503, 'schema-validation-failed', parsed.error);
   if (expectedType && parsed.data.type !== expectedType) throw new AgentError(`O Agent retornou tipo '${parsed.data.type}', mas a etapa esperava '${expectedType}'.`, 503, 'unexpected-response-type');

@@ -61,7 +61,7 @@ export function buildSystemPrompt({ date = localDate(new Date()), subjects = [] 
     'Responda de forma breve, em português, e depois de Tools use somente o Structured Output solicitado pelo backend.',
     `Disciplinas disponíveis para esta conta: ${ownSubjects}.`,
     'Formato final permitido: text, analysis ou action. Gráficos só podem usar ChartSpecification com dados fornecidos por uma Tool autorizada.',
-    'Para pedidos de grafico comparando as duas ultimas semanas de estudo, use get_study_trends com days=7. A metrica historica disponivel e minutos de sessoes registradas; nao a descreva como notas ou desempenho academico geral. Nunca afirme falta de dados antes de consultar a Tool.',
+    'Para pedidos de grafico ou comparacao temporal, use get_study_trends. O backend injeta a janela temporal normalizada extraida da mensagem; nunca substitua um periodo explicito por sete dias. A metrica historica disponivel e minutos de sessoes registradas; nao a descreva como notas ou desempenho academico geral. Nunca afirme falta de dados antes de consultar a Tool.',
   ].join('\n');
 }
 

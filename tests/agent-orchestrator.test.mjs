@@ -53,6 +53,29 @@ test('orchestrator preserva thoughtSignature ao retomar conversa Gemini apos Too
   assert.equal(firstRequests.length, 2);
 });
 
+test('orchestrator preserva quatro semanas ate o grafico e ignora JSON textual do provider', async () => {
+  const { db, user } = await fixture();
+  let calls = 0;
+  const provider = { async complete() {
+    calls += 1;
+    if (calls === 1) return { model: 'mock', content: null, toolCalls: [{ id: 'trend-4-weeks', name: 'get_study_trends', arguments: {} }] };
+    return { model: 'mock', content: JSON.stringify({ type: 'line', title: 'JSON indevido', data: [], series: [] }) };
+  } };
+  const tools = createAgentToolRegistry({
+    readSnapshot: async () => ({ data: { subjects: [], tasks: [], sessions: [
+      { id: '1', subjectId: '', date: '2026-10-06', minutes: 10 },
+      { id: '2', subjectId: '', date: '2026-10-13', minutes: 20 },
+      { id: '3', subjectId: '', date: '2026-10-20', minutes: 30 },
+      { id: '4', subjectId: '', date: '2026-10-27', minutes: 40 },
+    ] } }),
+  });
+  const result = await chatWithAgent({ db, user, message: 'Compare meu desempenho nas ultimas 4 semanas', config: config(), provider, tools });
+  assert.equal(result.response.type, 'analysis');
+  assert.equal(result.response.chart.data.length, 4);
+  assert.deepEqual(result.response.chart.data.map(point => point.minutes), [10, 20, 30, 40]);
+  assert.equal(result.response.chart.data[0].period, 'Semana 1');
+});
+
 test('orchestrator persiste conversa e resposta text', async () => {
   const { db, user } = await fixture();
   const provider = { async complete(request) { assert.equal(request.tools.length, 8); return { model: 'mock', content: JSON.stringify({ type: 'text', content: 'Olá, estudante.' }) }; } };
