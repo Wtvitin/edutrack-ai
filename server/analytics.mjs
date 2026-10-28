@@ -1,1 +1,65 @@
-export function prepareAnalytics(data, days = 7, subject = 'all') { return new Promise((resolve, reject) => { try { const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }); const parsedToday = new Date(today + 'T12:00:00Z'); const start = new Date(parsedToday); start.setDate(parsedToday.getDate() - (days - 1)); const previous = new Date(start); previous.setDate(start.getDate() - days); const startIso = start.toISOString().substring(0, 10); const previousIso = previous.toISOString().substring(0, 10); const todayIso = parsedToday.toISOString().substring(0, 10); let sessions = data.sessions; if (subject !== 'all') sessions = sessions.filter(s => s.subjectId === subject); const currentSessions = sessions.filter(s => s.date >= startIso && s.date <= todayIso); const oldSessions = sessions.filter(s => s.date >= previousIso && s.date < startIso); const totals = {}; for (const s of currentSessions) { totals[s.date] = (totals[s.date] || 0) + s.minutes; } const tasks = data.tasks.filter(t => subject === 'all' || t.subjectId === subject); const active = tasks.filter(t => !t.done && t.status !== 'CANCELLED'); const completed = tasks.filter(t => { const tDate = t.completedAt ? new Date(t.completedAt).toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }) : null; return t.done && tDate && tDate >= startIso && tDate <= todayIso; }); const minutes = currentSessions.reduce((acc, s) => acc + s.minutes, 0); const oldMinutes = oldSessions.reduce((acc, s) => acc + s.minutes, 0); const distribution = []; for (const subj of data.subjects) { if (subject !== 'all' && subj.id !== subject) continue; const subset = active.filter(t => t.subjectId === subj.id); const subjMinutes = currentSessions.filter(s => s.subjectId === subj.id).reduce((acc, s) => acc + s.minutes, 0); distribution.push({ name: subj.name, minutes: subjMinutes, pending: subset.length, estimatedMinutes: subset.reduce((acc, t) => acc + (t.estimatedMinutes || 0), 0) }); } const daily = []; for (let i = 0; i < days; i++) { const d = new Date(start); d.setDate(start.getDate() + i); const iso = d.toISOString().substring(0, 10); daily.push({ date: iso, minutes: totals[iso] || 0 }); } resolve({ days, start: startIso, end: todayIso, minutes, previousMinutes: oldMinutes, changePercent: oldMinutes ? Number(((minutes - oldMinutes) / oldMinutes * 100).toFixed(1)) : null, activeDays: Object.keys(totals).length, sessions: currentSessions.length, averageSession: currentSessions.length ? Number((minutes / currentSessions.length).toFixed(1)) : 0, completed: completed.length, pending: active.length, overdue: active.filter(t => t.due && t.due < todayIso).length, urgent: active.filter(t => t.priority === 'urgente' || t.priority === 'URGENT').length, estimatedMinutes: active.reduce((acc, t) => acc + (t.estimatedMinutes || 0), 0), daily, subjects: distribution }); } catch (e) { reject(e); } }); }
+const localDate = date => date.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+const shiftDate = (date, days) => {
+  const shifted = new Date(`${date}T12:00:00Z`);
+  shifted.setUTCDate(shifted.getUTCDate() + days);
+  return shifted.toISOString().slice(0, 10);
+};
+
+export async function prepareAnalytics(data, days = 7, subject = 'all', { today = localDate(new Date()) } = {}) {
+    const start = shiftDate(today, -(days - 1));
+    const previousStart = shiftDate(start, -days);
+    const previousEnd = shiftDate(start, -1);
+    let sessions = data.sessions;
+    if (subject !== 'all') sessions = sessions.filter(session => session.subjectId === subject);
+
+    const currentSessions = sessions.filter(session => session.date >= start && session.date <= today);
+    const previousSessions = sessions.filter(session => session.date >= previousStart && session.date <= previousEnd);
+    const sumMinutes = entries => entries.reduce((total, session) => total + session.minutes, 0);
+    const aggregateDaily = entries => Array.from({ length: days }, (_, index) => {
+      const date = shiftDate(entries === currentSessions ? start : previousStart, index);
+      return { date, minutes: sumMinutes(entries.filter(session => session.date === date)) };
+    });
+    const daily = aggregateDaily(currentSessions);
+    const previousDaily = aggregateDaily(previousSessions);
+    const totals = Object.fromEntries(daily.map(point => [point.date, point.minutes]));
+    const tasks = data.tasks.filter(task => subject === 'all' || task.subjectId === subject);
+    const active = tasks.filter(task => !task.done && task.status !== 'CANCELLED');
+    const completed = tasks.filter(task => {
+      const completedDate = task.completedAt ? localDate(new Date(task.completedAt)) : null;
+      return task.done && completedDate && completedDate >= start && completedDate <= today;
+    });
+    const distribution = data.subjects.filter(item => subject === 'all' || item.id === subject).map(item => {
+      const subset = active.filter(task => task.subjectId === item.id);
+      return {
+        name: item.name,
+        minutes: sumMinutes(currentSessions.filter(session => session.subjectId === item.id)),
+        pending: subset.length,
+        estimatedMinutes: subset.reduce((total, task) => total + (task.estimatedMinutes || 0), 0),
+      };
+    });
+
+    const minutes = sumMinutes(currentSessions);
+    const previousMinutes = sumMinutes(previousSessions);
+    return {
+      days,
+      start,
+      end: today,
+      minutes,
+      previousMinutes,
+      changePercent: previousMinutes ? Number(((minutes - previousMinutes) / previousMinutes * 100).toFixed(1)) : null,
+      activeDays: Object.values(totals).filter(value => value > 0).length,
+      sessions: currentSessions.length,
+      previousSessions: previousSessions.length,
+      averageSession: currentSessions.length ? Number((minutes / currentSessions.length).toFixed(1)) : 0,
+      completed: completed.length,
+      pending: active.length,
+      overdue: active.filter(task => task.due && task.due < today).length,
+      urgent: active.filter(task => task.priority === 'urgente' || task.priority === 'URGENT').length,
+      estimatedMinutes: active.reduce((total, task) => total + (task.estimatedMinutes || 0), 0),
+      daily,
+      previousDaily,
+      previousStart,
+      previousEnd,
+      subjects: distribution,
+    };
+}

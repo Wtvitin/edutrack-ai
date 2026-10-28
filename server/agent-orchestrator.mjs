@@ -89,27 +89,31 @@ function errorContent(error) {
 }
 
 function completeAnalysisFromTools(content, toolOutputs) {
-  if (typeof content !== 'string') return content;
-  let value;
-  try { value = JSON.parse(content); } catch { return content; }
   const trends = toolOutputs.get('get_study_trends');
-  if (!trends || value?.type !== 'analysis') return content;
-  const data = [
-    { period: 'Periodo atual', minutes: trends.minutes },
-    { period: 'Periodo anterior', minutes: trends.previousMinutes },
-  ];
+  if (!trends) return content;
+  const daily = trends.daily;
+  const previousDaily = trends.previousDaily;
+  if (!Array.isArray(daily) || !Array.isArray(previousDaily) || daily.length !== trends.days || previousDaily.length !== trends.days || daily.some((point, index) => !Number.isInteger(point.minutes) || point.minutes < 0 || !Number.isInteger(previousDaily[index]?.minutes) || previousDaily[index].minutes < 0)) throw new AgentError('Os dados temporais retornados pela Tool sao invalidos.', 503, 'invalid-trend-data');
+  const metrics = { days: trends.days, start: trends.start, end: trends.end, previousStart: trends.previousStart, previousEnd: trends.previousEnd, minutes: trends.minutes, previousMinutes: trends.previousMinutes, sessions: trends.sessions, previousSessions: trends.previousSessions };
+  if (trends.sessions + trends.previousSessions === 0) return JSON.stringify({ type: 'analysis', analysis: 'Ainda nao ha sessoes de estudo registradas nos dois periodos para comparar.', metrics });
+  const data = daily.map((point, index) => ({ day: `Dia ${index + 1}`, minutes: point.minutes, previousMinutes: previousDaily[index].minutes }));
   return JSON.stringify({
-    ...value,
-    metrics: { ...trends },
+    type: 'analysis',
+    analysis: `Foram registrados ${trends.minutes} min nos 7 dias recentes (${trends.start} a ${trends.end}) e ${trends.previousMinutes} min nos 7 dias anteriores (${trends.previousStart} a ${trends.previousEnd}).`,
+    metrics,
     chart: {
       type: 'comparison',
-      title: 'Comparativo das ultimas duas semanas de estudo',
-      xAxis: { field: 'period', label: 'Periodo' },
+      title: 'Tempo de estudo nas duas ultimas semanas',
+      description: 'Minutos registrados em cada dia correspondente dos periodos indicados.',
+      xAxis: { field: 'day', label: 'Dia do periodo' },
       yAxis: { field: 'minutes', label: 'Minutos estudados' },
-      series: [{ field: 'minutes', label: 'Minutos estudados' }],
+      series: [
+        { field: 'previousMinutes', label: `Semana anterior (${trends.previousStart} a ${trends.previousEnd})` },
+        { field: 'minutes', label: `Semana recente (${trends.start} a ${trends.end})` },
+      ],
       data,
       source: { tool: 'get_study_trends' },
-      datasetVersion: 'get_study_trends-v1',
+      datasetVersion: 'get_study_trends-v2',
     },
   });
 }
@@ -137,6 +141,7 @@ export async function chatWithAgent({ db, user, message, conversationId, config 
   const executedToolNames = new Set();
   const executedCallKeys = new Set();
   const toolOutputs = new Map();
+  const failedToolNames = new Set();
   let expectedType;
   let iterations = 0;
   let toolCallCount = 0;
@@ -152,6 +157,7 @@ export async function chatWithAgent({ db, user, message, conversationId, config 
     });
     const calls = Array.isArray(result.toolCalls) ? result.toolCalls : [];
     if (!calls.length) {
+      if (failedToolNames.has('get_study_trends')) throw new AgentError('Nao foi possivel consultar o historico de sessoes de estudo.', 503, 'study-trends-unavailable');
       const response = parseResponse(completeAnalysisFromTools(result.content, toolOutputs), expectedType, executedToolNames);
       await persistMessage(db, currentConversationId, 'ASSISTANT', JSON.stringify(response));
       await db.query('UPDATE ai_conversations SET updated_at=now() WHERE id=$1 AND user_id=$2', [currentConversationId, user.id]);
@@ -179,10 +185,12 @@ export async function chatWithAgent({ db, user, message, conversationId, config 
         if (!validation.success) throw validation.error;
         output = await registry.execute(name, validation.data, { db, user, executionId, conversationId: currentConversationId, config });
         executedToolNames.add(name);
+        failedToolNames.delete(name);
         expectedType = finalToolType(expectedType, definition);
         await db.query('UPDATE ai_tool_executions SET output_json=$2,status=$3,completed_at=now() WHERE id=$1 AND user_id=$4', [executionId, boundedJson(output, config.maxToolResultLength), 'SUCCESS', user.id]);
       } catch (error) {
         failure = error instanceof AgentError ? error : new AgentError('A Tool falhou.', 503, 'tool-failed', error);
+        failedToolNames.add(name);
         await db.query('UPDATE ai_tool_executions SET output_json=$2,status=$3,completed_at=now() WHERE id=$1 AND user_id=$4', [executionId, JSON.stringify(errorContent(failure)), 'FAILED', user.id]);
       }
       if (!failure) toolOutputs.set(name, output);

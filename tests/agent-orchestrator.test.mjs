@@ -25,7 +25,7 @@ test('orchestrator preserva thoughtSignature ao retomar conversa Gemini apos Too
   const providerConfig = { ...config(), apiKey: 'gemini-test-key' };
   const tools = createAgentToolRegistry({
     readSnapshot: async () => ({ data: { subjects: [], tasks: [], sessions: [] } }),
-    analytics: async () => ({ days: 7, minutes: 0, previousMinutes: 105, activeDays: 0, sessions: 0, averageSession: 0, daily: [], subjects: [] }),
+    analytics: async () => ({ days: 7, start: '2026-10-21', end: '2026-10-27', previousStart: '2026-10-14', previousEnd: '2026-10-20', minutes: 0, previousMinutes: 105, activeDays: 0, sessions: 0, previousSessions: 2, averageSession: 0, daily: Array.from({ length: 7 }, (_, index) => ({ date: `2026-10-${String(21 + index).padStart(2, '0')}`, minutes: 0 })), previousDaily: Array.from({ length: 7 }, (_, index) => ({ date: `2026-10-${String(14 + index).padStart(2, '0')}`, minutes: index === 0 ? 105 : 0 })), subjects: [] }),
   });
   const finalContent = JSON.stringify({ type: 'analysis', analysis: 'Comparacao pronta.', metrics: { minutes: 0, previousMinutes: 105 } });
   const firstRequests = [];

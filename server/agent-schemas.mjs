@@ -47,7 +47,7 @@ export const toolArgumentSchemas = Object.freeze({
   get_task: taskIdSchema,
   list_tasks: listTasksSchema,
   get_academic_performance: emptySchema,
-  get_study_trends: emptySchema,
+  get_study_trends: z.object({ days: z.union([z.literal(7), z.literal(14), z.literal(30), z.literal(90)]).optional() }).strict(),
   get_general_dashboard: emptySchema,
 });
 
@@ -62,7 +62,7 @@ export const toolDefinitions = Object.freeze([
   { name: 'get_task', description: 'Get one academic task owned by the authenticated user.', risk: 'read', parameters: toolJson(['taskId'], { taskId: uuidJson }) },
   { name: 'list_tasks', description: 'List academic tasks for the authenticated user, optionally filtered by status.', risk: 'read', parameters: toolJson([], { status: { type: 'string', enum: taskStatusValues } }) },
   { name: 'get_academic_performance', description: 'Get academic performance metrics for the authenticated user.', risk: 'read', parameters: toolJson([], {}) },
-  { name: 'get_study_trends', description: 'Get study time trends and subject distribution for the authenticated user.', risk: 'read', parameters: toolJson([], {}) },
+  { name: 'get_study_trends', description: 'Get historical study time trends for the authenticated user. Use days=7 for a comparison of the latest two consecutive weeks; results include daily minutes for both weeks.', risk: 'read', parameters: toolJson([], { days: { type: 'integer', enum: [7, 14, 30, 90] } }) },
   { name: 'get_general_dashboard', description: 'Get dashboard aggregates for the authenticated user.', risk: 'read', parameters: toolJson([], {}) },
 ].map(definition => ({ ...definition, type: 'function', function: { name: definition.name, description: definition.description, parameters: definition.parameters } })));
 

@@ -106,11 +106,11 @@ async function listTasks(db, user, args) {
   return { tasks: rows.map(taskResult), count: rows.length };
 }
 
-async function analyticsResult(readSnapshot, analytics, db, user, toolName) {
+async function analyticsResult(readSnapshot, analytics, db, user, toolName, args = {}) {
   const snapshot = await readSnapshot(db, user);
-  const metrics = await analytics(snapshot.data, 7, 'all');
+  const metrics = await analytics(snapshot.data, toolName === 'get_study_trends' ? args.days || 7 : 7, 'all');
   if (toolName === 'get_academic_performance') return { completed: metrics.completed, pending: metrics.pending, overdue: metrics.overdue, urgent: metrics.urgent, estimatedMinutes: metrics.estimatedMinutes, changePercent: metrics.changePercent };
-  if (toolName === 'get_study_trends') return { days: metrics.days, minutes: metrics.minutes, previousMinutes: metrics.previousMinutes, activeDays: metrics.activeDays, sessions: metrics.sessions, averageSession: metrics.averageSession, daily: metrics.daily, subjects: metrics.subjects };
+  if (toolName === 'get_study_trends') return { days: metrics.days, start: metrics.start, end: metrics.end, previousStart: metrics.previousStart, previousEnd: metrics.previousEnd, minutes: metrics.minutes, previousMinutes: metrics.previousMinutes, activeDays: metrics.activeDays, sessions: metrics.sessions, previousSessions: metrics.previousSessions, averageSession: metrics.averageSession, daily: metrics.daily, previousDaily: metrics.previousDaily, subjects: metrics.subjects };
   return { start: metrics.start, end: metrics.end, minutes: metrics.minutes, completed: metrics.completed, pending: metrics.pending, overdue: metrics.overdue, urgent: metrics.urgent, subjects: metrics.subjects, recentSessions: snapshot.data.sessions.slice(-10) };
 }
 
@@ -129,7 +129,7 @@ export function createAgentToolRegistry({ readSnapshot = readData, analytics = p
     get_task: ({ db, user, args }) => getTask(db, user, args),
     list_tasks: ({ db, user, args }) => listTasks(db, user, args),
     get_academic_performance: ({ db, user }) => analyticsResult(readSnapshot, analytics, db, user, 'get_academic_performance'),
-    get_study_trends: ({ db, user }) => analyticsResult(readSnapshot, analytics, db, user, 'get_study_trends'),
+    get_study_trends: ({ db, user, args }) => analyticsResult(readSnapshot, analytics, db, user, 'get_study_trends', args),
     get_general_dashboard: ({ db, user }) => analyticsResult(readSnapshot, analytics, db, user, 'get_general_dashboard'),
   };
   const definitions = toolDefinitions.map(definition => ({ ...definition, execute: executors[definition.name] }));
