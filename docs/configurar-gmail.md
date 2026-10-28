@@ -9,7 +9,7 @@ O Gmail aqui é o remetente dos e-mails transacionais. Isso NÃO implementa "Ent
 ```dotenv
 MAIL_MODE=smtp
 SMTP_HOST=smtp.gmail.com
-SMTP_PORT=465
+SMTP_PORT=587
 SMTP_USER=seu-remetente@gmail.com
 SMTP_PASSWORD=senha_de_app_sem_espacos
 MAIL_FROM="EduTrack AI <seu-remetente@gmail.com>"
