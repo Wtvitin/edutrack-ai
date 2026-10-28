@@ -29,3 +29,4 @@
 - [x] 5.1 Roteia pedidos de grafico/comparacao temporal explicitamente para `get_study_trends` antes do Provider escolher ferramenta.
 - [x] 5.2 Testa a frase original de ponta a ponta, intervalos mensais, semanas, historico disponivel e falhas de consulta/Provider.
 - [x] 5.3 Expoe intervalo consultado e limites das sessoes encontradas no texto final.
+- [x] 5.4 Preserva o estado parcial do bucket mensal na especificacao do grafico.

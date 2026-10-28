@@ -128,7 +128,8 @@ function completeAnalysisFromTools(content, toolOutputs) {
   const metrics = { metric: trends.metric, unit: trends.unit, granularity: trends.granularity, count: trends.count, comparison: trends.comparison, start: trends.start, end: trends.end, recordStart: trends.recordStart, recordEnd: trends.recordEnd, minutes: trends.minutes, sessions: trends.sessions };
   if (!trends.hasActivity) return JSON.stringify({ type: 'analysis', analysis: `A consulta cobriu ${trends.start} a ${trends.end}; nao ha sessoes de estudo registradas nesse intervalo.`, metrics });
   const coverageNote = trends.recordStart && trends.recordStart > trends.start ? ` Os registros encontrados no intervalo vao de ${trends.recordStart} a ${trends.recordEnd}; periodos sem sessoes registradas nao foram preenchidos artificialmente.` : '';
-  const data = periods.map(period => ({ period: period.label, start: period.start, end: period.end, minutes: period.minutes, sessions: period.sessions }));
+  const data = periods.map(period => ({ period: period.label, start: period.start, end: period.end, complete: period.complete, minutes: period.minutes, sessions: period.sessions }));
+  const partialPeriod = periods.find(period => !period.complete);
   const chartType = trends.chartType === 'line' ? 'line' : 'bar';
   return JSON.stringify({
     type: 'analysis',
@@ -137,7 +138,7 @@ function completeAnalysisFromTools(content, toolOutputs) {
     chart: {
       type: chartType,
       title: `Minutos estudados por ${trends.granularity === 'month' ? 'mes' : trends.granularity === 'week' ? 'semana' : 'dia'}`,
-      description: 'Valores calculados a partir das sessoes de estudo registradas no periodo solicitado.',
+      description: `Valores calculados a partir das sessoes registradas no intervalo solicitado.${partialPeriod ? ` O ultimo periodo e parcial ate ${partialPeriod.end}.` : ''}`,
       xAxis: { field: 'period', label: trends.granularity === 'month' ? 'Mes' : trends.granularity === 'week' ? 'Semana' : 'Data' },
       yAxis: { field: 'minutes', label: 'Minutos estudados' },
       series: [{ field: 'minutes', label: 'Minutos estudados' }],

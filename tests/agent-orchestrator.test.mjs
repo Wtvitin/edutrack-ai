@@ -120,6 +120,8 @@ test('frase original encaminha dois meses ate consulta, agregacao e grafico', as
   assert.match(result.response.analysis, /64 minutos/);
   assert.equal(result.response.chart.title, 'Minutos estudados por mes');
   assert.deepEqual(result.response.chart.data.map(point => point.minutes), toolOutput.periods.map(period => period.minutes));
+  assert.deepEqual(result.response.chart.data.map(point => point.complete), toolOutput.periods.map(period => period.complete));
+  assert.equal(result.response.chart.data[1].complete, false);
   assert.deepEqual(result.response.chart.data.map(point => point.period), toolOutput.periods.map(period => period.label));
 });
 
