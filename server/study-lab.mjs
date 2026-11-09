@@ -174,7 +174,10 @@ export function createStudyLab(db,{provider,providerName,model,draw}={}){
     const activities=(await db.query("SELECT id,mode,status,subject_id,subject_name,topic,config_json,jsonb_build_object('questions',COALESCE((SELECT jsonb_agg(jsonb_build_object('concept',q->>'concept')) FROM jsonb_array_elements(questions_json->'questions') q),'[]'::jsonb)) AS questions_json,score,duration_seconds,created_at,started_at,completed_at FROM learning_activities WHERE user_id=$1 ORDER BY created_at DESC,id DESC",[user.id])).rows;
     const answers=(await db.query("SELECT a.activity_id,a.question_index,a.is_correct,q.questions_json->'questions'->a.question_index->>'concept' AS concept FROM learning_answers a JOIN learning_activities q ON q.id=a.activity_id AND q.user_id=a.user_id WHERE a.user_id=$1",[user.id])).rows;
     const latest=(await db.query("SELECT id,review_state,review_json,review_attempts,review_error_code FROM learning_activities WHERE user_id=$1 AND status='completed' ORDER BY completed_at DESC LIMIT 1",[user.id])).rows[0];
-    return {summary:calculateLabSummary(activities,answers),activities:activities.slice((Math.min(page,Math.max(1,Math.ceil(activities.length/30)))-1)*30,Math.min(page,Math.max(1,Math.ceil(activities.length/30)))*30).map(brief),historyLimited:activities.length>30,pagination:{page:Math.min(page,Math.max(1,Math.ceil(activities.length/30))),pageSize:30,total:activities.length,pages:Math.max(1,Math.ceil(activities.length/30))},
+    const history=activities.filter(activity=>activity.status!=='failed');
+    const pageSize=30,pages=Math.max(1,Math.ceil(history.length/pageSize)),currentPage=Math.min(page,pages);
+    return {summary:calculateLabSummary(activities,answers),activities:history.slice((currentPage-1)*pageSize,currentPage*pageSize).map(brief),
+      historyLimited:history.length>pageSize,pagination:{page:currentPage,pageSize,total:history.length,pages},
       aiReview:latest?{activityId:latest.id,state:latest.review_state,content:latest.review_json,attempts:latest.review_attempts,errorCode:latest.review_error_code}:null};
   }
   const base={generate,detail,answer,finish,overview};

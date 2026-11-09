@@ -121,7 +121,7 @@ test('generation failures, paid-call limits and additive migration integrity on 
     await t.test('invalid/incomplete JSON is rejected once and failed requests never regenerate implicitly',async()=>{
       state.document='{"questions":[';const config=labConfig();
       await assert.rejects(lab.generate(a,config),e=>e.code==='lab-invalid-generation');const calls=state.calls;
-      const failed=await lab.generate(a,config);assert.equal(failed.status,'failed');assert.equal(state.calls,calls);assert.equal(failed.questions.length,0);state.document=null;
+      const failed=await lab.generate(a,config);assert.equal(failed.status,'failed');assert.equal(state.calls,calls);assert.equal(failed.questions.length,0);const history=await lab.overview(a);assert.equal(history.activities.length,0);assert.equal(history.pagination.total,0);assert.equal((await lab.detail(a,failed.id)).status,"failed");state.document=null;
     });
     await t.test('tool requests are rejected without academic side effects',async()=>{
       state.toolCalls=[{name:'create_task',arguments:{title:'forged'}}];await assert.rejects(lab.generate(a,labConfig()),e=>e.code==='lab-invalid-generation');
