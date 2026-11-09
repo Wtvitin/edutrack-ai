@@ -1,23 +1,23 @@
 "use client";
 
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
-import { ArrowUp, BookOpen, CalendarDays, Check, Clock3, ListChecks, MessageCircle, Sparkles, Target, WandSparkles } from 'lucide-react';
+import { ArrowUp, BookOpen, CalendarDays, Check, ChevronRight, Clock3, GraduationCap, History, ListChecks, MessageCircle, Send, ShieldCheck, Sparkles, Target, WandSparkles } from 'lucide-react';
 import { formatMinutes, lastSevenDays, type StudyData } from '@/lib/edutrack';
 import { AgentChart } from './agent-chart';
 import { AgentRequestError, chatWithAgent, type AgentResponse } from './agent-api';
-import { Heading, type ViewProps } from './views';
+import type { ViewProps } from './views';
 import Link from './link';
 import {navigateWithinStudy} from './navigation';
 
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string; response?: AgentResponse };
 
 const suggestions = [
-  { label: 'Ver minhas tarefas', prompt: 'Quais são minhas tarefas?', icon: ListChecks },
-  { label: 'Analisar meu desempenho', prompt: 'Como está meu desempenho?', icon: Target },
-  { label: 'Ver tendências de estudo', prompt: 'Mostre minhas tendências de estudo', icon: CalendarDays },
-  { label: 'Praticar com um quiz', prompt: 'Monte um quiz com base nas minhas matérias e atividades e abra no Laboratório.', icon: WandSparkles },
-  { label: 'Criar flashcards', prompt: 'Crie flashcards dos assuntos em que mais errei e abra o Laboratório.', icon: BookOpen },
-  { label: 'Preparar um simulado', prompt: 'Prepare um simulado de 30 questões sobre a matéria que mais preciso revisar.', icon: BookOpen },
+  { label: 'Ver minhas tarefas', description: 'Confira e organize suas atividades', prompt: 'Quais são minhas tarefas?', icon: ListChecks },
+  { label: 'Analisar meu desempenho', description: 'Entenda seus resultados e sua evolução', prompt: 'Como está meu desempenho?', icon: Target },
+  { label: 'Ver tendências de estudo', description: 'Compare seu ritmo de estudo', prompt: 'Mostre minhas tendências de estudo', icon: CalendarDays },
+  { label: 'Praticar com um quiz', description: 'Teste seus conhecimentos na prática', prompt: 'Monte um quiz com base nas minhas matérias e atividades e abra no Laboratório.', icon: WandSparkles },
+  { label: 'Criar flashcards', description: 'Revise os principais conceitos', prompt: 'Crie flashcards dos assuntos em que mais errei e abra o Laboratório.', icon: BookOpen },
+  { label: 'Preparar um simulado', description: 'Pratique em formato de prova', prompt: 'Prepare um simulado de 30 questões sobre a matéria que mais preciso revisar.', icon: GraduationCap },
 ];
 
 function responseText(response: AgentResponse) {
@@ -121,20 +121,28 @@ export function AgentView({ data, editTask, onDataChanged }: Pick<ViewProps, 'da
 
   function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); sendMessage(); }
 
-  return <>
-    <Heading title="Seu espaço para pensar melhor" description={isDemo ? 'Explore uma prévia segura usando apenas os dados locais da demonstração.' : 'Converse com seu assistente acadêmico com contexto e segurança.'}/>
-    <div className="agent-shell">
-      <header className="agent-header"><div className="agent-identity"><div className="agent-avatar"><Sparkles size={21}/></div><div><strong>Assistente EduTrack</strong><span>Seu parceiro de estudos</span></div></div><div className="agent-status"><span className="agent-status-dot"/>{isDemo ? 'Modo demonstração' : 'Pronto para ajudar'}</div></header>
-      {conversationId&&<div className="inline-actions"><button type="button" className="button secondary" disabled={busy} onClick={newConversation}>Nova conversa</button>{!messages.length&&<p className="form-note">Conversa anterior retomada. O contexto salvo será usado ao enviar sua próxima mensagem.</p>}</div>}
-      {!messages.length && <section className="agent-empty-state"><div className="agent-empty-icon"><WandSparkles size={27}/></div><span className="eyebrow">ASSISTENTE ACADÊMICO</span><h2>Qual é o próximo passo?</h2><p>Organize tarefas, entenda seu ritmo de estudo e encontre prioridades com uma conversa simples.</p><div className="agent-suggestions">{suggestions.map(({ label, prompt, icon: Icon }) => <button className="agent-suggestion" key={prompt} type="button" onClick={() => { setInput(prompt); textareaRef.current?.focus(); }}><Icon size={17}/><span>{label}</span><ArrowUp size={15}/></button>)}</div></section>}
-      <section className="agent-chat-card" aria-label="Conversa com o Assistente EduTrack">
-        <div className="agent-chat-heading"><div><span className="agent-section-kicker"><MessageCircle size={14}/> CONVERSA</span><h2>{messages.length ? 'Continuar conversa' : 'Comece quando quiser'}</h2></div><span className="agent-privacy"><Check size={14}/> Dados protegidos</span></div>
-        <div className="agent-messages" role="log" aria-live="polite" aria-label="Mensagens da conversa">{messages.map((message, index) => <article key={message.id} ref={index===messages.length-1?latestMessageRef:undefined} className={`agent-message ${message.role}`}><div className="agent-message-meta"><span className={`agent-message-mark ${message.role}`}>{message.role === 'user' ? 'Você' : <Sparkles size={14}/>}</span><strong>{message.role === 'user' ? 'Você' : 'Assistente EduTrack'}</strong></div><div className="agent-message-body"><p>{message.text}</p>{message.response?.type === 'analysis' && <AnalysisDetails response={message.response}/>} {message.response?.type === 'action' && <ActionResult response={message.response}/>}</div></article>)}{busy && <div className="agent-processing" role="status"><span className="agent-processing-icon"><Sparkles size={15}/></span><span>Organizando uma resposta para você</span><span className="agent-dots"><i/><i/><i/></span></div>}<div ref={messagesEndRef}/></div>
+  return <div className="agent-shell">
+    <header className="agent-header">
+      <div className="agent-identity"><div className="agent-avatar"><Sparkles size={21}/></div><strong>Assistente EduTrack</strong></div>
+      {conversationId&&<button type="button" className="button secondary" disabled={busy} onClick={newConversation}>Nova conversa</button>}
+    </header>
+    {!messages.length && <section className="agent-empty-state" aria-labelledby="agent-intro-title">
+      <div className="agent-intro-meta"><span className="eyebrow">ASSISTENTE ACADÊMICO</span><span className="agent-status"><span className="agent-status-dot"/>{isDemo ? 'Modo demonstração' : 'Pronto para ajudar'}</span></div>
+      <div className="agent-intro-title"><div className="agent-empty-icon"><Sparkles size={27}/></div><h1 id="agent-intro-title">Qual é o próximo passo?</h1></div>
+      <p>{isDemo?'Explore uma prévia do assistente com os dados da demonstração.':'Organize tarefas, acompanhe seu desempenho e pratique com a IA do EduTrack.'}</p>
+      <div className="agent-suggestions" aria-label="Sugestões de conversa">
+        {suggestions.map(({ label, description, prompt, icon: Icon }) => <button className="agent-suggestion" key={prompt} type="button" onClick={() => { setInput(prompt); textareaRef.current?.focus(); }}>
+          <span className="agent-suggestion-icon"><Icon size={22}/></span><span className="agent-suggestion-copy"><strong>{label}</strong><small>{description}</small></span><ChevronRight className="agent-suggestion-arrow" size={18}/>
+        </button>)}
+      </div>
+    </section>}
+    <section className="agent-chat-card" aria-label="Conversa com o Assistente EduTrack">
+      <div className="agent-chat-heading"><MessageCircle size={26} aria-hidden="true"/><div><h2>Conversa com a IA</h2><p>Tire dúvidas, peça recomendações e receba orientações para seus estudos.</p></div></div>
+        <div className="agent-messages" role="log" aria-live="polite" aria-label="Mensagens da conversa">{!messages.length&&<div className="agent-chat-welcome"><div className="agent-empty-icon"><MessageCircle size={25}/></div><h3>{conversationId?"Continue sua conversa":"Comece a conversar"}</h3><p>{conversationId?"O contexto salvo será usado ao enviar a próxima mensagem.":"Pergunte sobre tarefas, conteúdos ou seu progresso."}</p></div>}{messages.map((message, index) => <article key={message.id} ref={index===messages.length-1?latestMessageRef:undefined} className={`agent-message ${message.role}`}><div className="agent-message-meta"><span className={`agent-message-mark ${message.role}`}>{message.role === 'user' ? 'Você' : <Sparkles size={14}/>}</span><strong>{message.role === 'user' ? 'Você' : 'Assistente EduTrack'}</strong></div><div className="agent-message-body"><p>{message.text}</p>{message.response?.type === 'analysis' && <AnalysisDetails response={message.response}/>} {message.response?.type === 'action' && <ActionResult response={message.response}/>}</div></article>)}{busy && <div className="agent-processing" role="status"><span className="agent-processing-icon"><Sparkles size={15}/></span><span>Organizando uma resposta para você</span><span className="agent-dots"><i/><i/><i/></span></div>}<div ref={messagesEndRef}/></div>
         {error && <div className="agent-error" role="alert"><span>Não consegui concluir agora.</span><small>{error}</small><button type="button" onClick={() => setError('')}>Fechar</button></div>}
-        <form onSubmit={submit} className="agent-composer"><label className="sr-only" htmlFor="agent-message">Mensagem para o Assistente EduTrack</label><textarea ref={textareaRef} id="agent-message" value={input} onChange={event => setInput(event.target.value)} onKeyDown={event => submitOnEnter(event, sendMessage)} placeholder="Pergunte sobre suas tarefas, estudos ou progresso..." maxLength={12000} rows={1}/><div className="agent-composer-footer"><span><Clock3 size={14}/> Enter envia · Shift + Enter quebra linha</span><button className="agent-send" type="submit" aria-label="Enviar mensagem" disabled={!input.trim() || busy}><ArrowUp size={19}/></button></div></form>
+        <form onSubmit={submit} className="agent-composer"><label className="sr-only" htmlFor="agent-message">Mensagem para o Assistente EduTrack</label><textarea ref={textareaRef} id="agent-message" value={input} onChange={event => setInput(event.target.value)} onKeyDown={event => submitOnEnter(event, sendMessage)} placeholder="Pergunte sobre suas tarefas, estudos ou progresso..." maxLength={12000} rows={1}/><div className="agent-composer-footer"><span><Clock3 size={14}/> Enter envia · Shift + Enter quebra linha</span><button className="agent-send" type="submit" aria-label="Enviar mensagem" disabled={!input.trim() || busy}><Send size={18}/></button></div></form>
       </section>
-      <div className="agent-trust-row"><span><Check size={15}/> Ações passam por validação do backend</span><span><Check size={15}/> Histórico protegido por conta</span></div>
+      <div className="agent-trust-row"><span><ShieldCheck size={15}/> Dados protegidos</span><span><History size={15}/> Histórico protegido por conta</span><span><Check size={15}/> Ações validadas pelo servidor</span></div>
       {isDemo && <button className="button secondary agent-demo-action" type="button" onClick={() => editTask()}>Planejar uma tarefa manualmente <ArrowUp size={16}/></button>}
-    </div>
-  </>;
+  </div>;
 }

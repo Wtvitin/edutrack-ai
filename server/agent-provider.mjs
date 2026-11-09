@@ -263,14 +263,20 @@ async function completeGroq(config, transport, request) {
   const tools = groqTools(request.tools);
   if (tools.length) { body.tools = tools; body.tool_choice = request.toolChoice || 'auto'; }
   if (request.responseFormat) body.response_format = groqResponseFormatBody(request.responseFormat);
+  const deadline = Date.now() + config.timeoutMs;
   let lastError;
   for (let attempt = 0; attempt < 2; attempt += 1) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
     try {
-      const response = await transport.post(config.baseUrl + '/chat/completions', { 'Content-Type': 'application/json', Authorization: 'Bearer ' + config.apiKey }, body, config.timeoutMs);
+      const response = await transport.post(config.baseUrl + '/chat/completions', { 'Content-Type': 'application/json', Authorization: 'Bearer ' + config.apiKey }, body, remaining);
       if (response.status < 200 || response.status >= 300) {
         const error = new AgentProviderError('O Provider não conseguiu responder.', response.status === 429 ? 429 : response.status >= 500 || response.status === 408 ? 503 : 503, 'provider-http-error', transientStatus(response.status));
         error.providerStatus = response.status;
-        error.providerMessage = response.body?.error?.message;
+        if (response.status === 429 && response.retryAfter != null) {
+          const seconds = Number(response.retryAfter);
+          error.retryAfterMs = Number.isFinite(seconds) ? Math.max(0, seconds * 1000) : 0;
+        }
         error.providerCode = response.body?.error?.code;
         if (!error.transient) throw error;
         lastError = error;
@@ -280,7 +286,11 @@ async function completeGroq(config, transport, request) {
       if (!normalized.transient) throw normalized;
       lastError = normalized;
     }
-    if (attempt === 0) await wait(50);
+    if (attempt === 0) {
+      const delay = Math.max(250, lastError?.retryAfterMs ?? 0);
+      if (delay > 2000 || delay >= deadline - Date.now()) break;
+      await wait(delay);
+    }
   }
   throw lastError || new AgentProviderError('O Provider está indisponível.', 503, 'provider-unavailable', true);
 }

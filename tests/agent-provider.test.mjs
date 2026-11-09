@@ -209,3 +209,15 @@ test('Gemini omits parameters for tools that take no arguments', async () => {
     ],
   });
 });
+
+test('Groq does not retry a rate limit before the provider permits it', async () => {
+  let attempts = 0;
+  const provider = createAgentProvider(config({ provider: 'groq', apiKey: 'mock', model: 'mock', timeoutMs: 30000 }), {
+    async post() {
+      attempts += 1;
+      return { status: 429, retryAfter: '15', body: { error: { message: 'rate limit' } } };
+    },
+  });
+  await assert.rejects(provider.complete({ messages: [] }), error => error.status === 429 && error.retryAfterMs === 15000);
+  assert.equal(attempts, 1);
+});
