@@ -186,7 +186,11 @@ function geminiSystemInstruction(messages) {
 }
 
 function geminiTools(tools = []) {
-  const definitions = providerTools(tools).map(tool => ({ name: tool.function.name, description: tool.function.description || '', parameters: geminiSchema(tool.function.parameters, { tool: true }) }));
+  const definitions = providerTools(tools).map(({ function: { name, description, parameters } }) => ({
+    name,
+    description: description || '',
+    ...(Object.keys(parameters?.properties || {}).length ? { parameters: geminiSchema(parameters, { tool: true }) } : {}),
+  }));
   return definitions.length ? [{ functionDeclarations: definitions }] : undefined;
 }
 

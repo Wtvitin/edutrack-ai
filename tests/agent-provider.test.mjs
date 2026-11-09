@@ -190,3 +190,22 @@ test('Groq sem chave, modelo ou resposta em timeout falha de forma controlada', 
   await assert.rejects(() => timeout.complete({ messages: [] }), error => error.code === 'provider-timeout');
   assert.equal(calls, 2);
 });
+
+test('Gemini omits parameters for tools that take no arguments', async () => {
+  const transport = {
+    async post(_url, _headers, body) {
+      const [noArgs, withArgs] = body.tools[0].functionDeclarations;
+      assert.deepEqual(noArgs, { name: 'get_general_dashboard', description: 'Get the dashboard' });
+      assert.deepEqual(withArgs.parameters.properties, { taskId: { type: 'string' } });
+      return { status: 200, body: { candidates: [{ content: { parts: [{ text: 'OK' }] } }] } };
+    },
+  };
+  const provider = createAgentProvider(config({ provider: 'google-gemini', apiKey: 'test-key' }), transport);
+  await provider.complete({
+    messages: [{ role: 'user', content: 'Mostre meu painel' }],
+    tools: [
+      { name: 'get_general_dashboard', description: 'Get the dashboard', parameters: { type: 'object', required: [], properties: {} } },
+      { name: 'get_task', parameters: { type: 'object', properties: { taskId: { type: 'string' } } } },
+    ],
+  });
+});
