@@ -18,7 +18,7 @@ export function useStudyStore(enabled:boolean,forceDemo=false){
         if(forceDemo)localStorage.setItem('edutrack-mode','demo');
         if(forceDemo||localStorage.getItem('edutrack-mode')==='demo'){
           const raw=localStorage.getItem('edutrack-demo-v1');const parsed=raw?studyDataSchema.safeParse(JSON.parse(raw)):null;
-          const next=parsed?.success?parsed.data:seedData();if(live){ref.current=next;setSnapshot(next);setReady(true);}return;
+          const next=parsed?.success?parsed.data:seedData();if(live){modeRef.current='demo';setMode('demo');ref.current=next;setSnapshot(next);setReady(true);}return;
         }
         const response=await fetch('/api/data',{credentials:'same-origin'});
         if(response.status===401){await navigateTo('/login');return;}
