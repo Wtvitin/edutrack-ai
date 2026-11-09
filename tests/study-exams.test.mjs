@@ -119,7 +119,7 @@ test('simulated exam lifecycle shares persistence, access control and analysis w
     await t.test('agent can only prepare and audit a draft, never generate or submit a proof',async()=>{
       const registry=createAgentToolRegistry({prepareExam:(user,input)=>lab.prepareExam(user,input)}),before=state.calls.length;
       const reply=await chatWithAgent({db,user,message:'Prepare um simulado de 30 questões sobre a matéria que mais preciso revisar.',config:readAgentConfig({}),provider:f.provider,tools:registry});
-      assert.equal(reply.response.action,'prepare_study_exam');const id=reply.response.result.id;assert.equal((await lab.detail(user,id)).status,'draft');assert.equal(state.calls.length,before+2);
+      assert.equal(reply.response.action,'prepare_study_exam');const id=reply.response.result.id;assert.equal((await lab.detail(user,id)).status,'draft');assert.equal(state.calls.length,before+1);
       assert.equal(registry.has('submit_exam'),false);assert.equal(registry.has('answer_exam'),false);assert.equal(registry.has('generate_exam'),false);
     });
   }finally{await db.close();}

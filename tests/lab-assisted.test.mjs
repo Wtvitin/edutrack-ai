@@ -83,7 +83,7 @@ test('assisted quiz collects authorized context, randomizes the exam and caches 
       const response=await chatWithAgent({db,user:a,message:'Monte um quiz de SQL conforme minhas atividades',config,provider:f.provider,tools});
       assert.equal(response.response.action,'prepare_study_quiz');const id=response.response.result.id;
       assert.equal(response.response.result.destination,`/laboratorio?atividade=${id}`);assert.equal((await lab.detail(a,id)).status,'draft');
-      assert.equal(state.calls.length,before+2);assert.equal((await db.query("SELECT count(*) AS n FROM ai_tool_executions WHERE user_id=$1 AND tool_name='prepare_study_quiz' AND status='SUCCESS'",[a.id])).rows[0].n,1);
+      assert.equal(state.calls.length,before+1);assert.equal((await db.query("SELECT count(*) AS n FROM ai_tool_executions WHERE user_id=$1 AND tool_name='prepare_study_quiz' AND status='SUCCESS'",[a.id])).rows[0].n,1);
       assert.equal((await db.query('SELECT count(*) AS n FROM academic_tasks WHERE user_id=$1',[a.id])).rows[0].n,1);
     });
     await t.test('server-selected settings cover larger exams without manual fields',async()=>{

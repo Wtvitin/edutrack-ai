@@ -125,6 +125,8 @@ function completeAnalysisFromTools(content, toolOutputs) {
   });
 }
 
+const laboratoryHandoffs = new Set(['prepare_study_quiz', 'prepare_study_exam', 'prepare_study_flashcards']);
+
 function finalToolType(current, definition) {
   return definition?.risk === 'write' || current === 'action' ? 'action' : 'analysis';
 }
@@ -215,6 +217,16 @@ async function runAgentTurn({ db, user, message, conversationId, config = readAg
       const toolResult = failure ? errorContent(failure) : output;
       messages.push({ role: 'tool', name, tool_call_id: callId, content: JSON.stringify(toolResult) });
       await persistMessage(db, currentConversationId, 'TOOL', toolContent(name, callId, toolResult));
+    }
+
+    // A saved Laboratory draft has everything the client needs to open it.
+    const writes = calls.filter(call => registry.get(call?.name)?.risk === 'write');
+    const handoff = writes.length === 1 ? writes[0].name : null;
+    if (!finalizing && handoff && laboratoryHandoffs.has(handoff) && toolOutputs.has(handoff)) {
+      const response = actionResponseSchema.parse({ type: 'action', action: handoff, result: redact(toolOutputs.get(handoff)) });
+      await persistMessage(db, currentConversationId, 'ASSISTANT', JSON.stringify(response));
+      await db.query('UPDATE ai_conversations SET updated_at=now() WHERE id=$1 AND user_id=$2', [currentConversationId, user.id]);
+      return { conversationId: currentConversationId, response, metadata: { model: result.model || config.model, iterations, toolCalls: toolCallCount } };
     }
   }
   throw new AgentError('O Agent atingiu o limite de iterações.', 503, 'iteration-limit');
