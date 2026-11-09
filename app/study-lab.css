@@ -18,3 +18,61 @@
 .lab-insights-grid{align-items:start}
 .lab-auto-form{display:flex;flex-direction:column;gap:14px}.lab-auto-form>label{font-weight:600;font-size:.9rem}.lab-auto-form>textarea{width:100%;min-height:115px;resize:vertical;border:1px solid var(--input);border-radius:12px;padding:16px;font:inherit;font-size:.95rem;color:var(--foreground);background:var(--card);line-height:1.7}.lab-auto-form>p,.lab-auto-form>small{font-size:.8rem;line-height:1.7;color:var(--lab-text)}.lab-auto-form>small{font-size:.7rem}.lab-advanced-toggle{margin:24px 0 10px}.lab-auto-context{display:flex;gap:10px;align-items:start;padding:14px 16px;margin-bottom:22px;border-radius:10px;background:var(--lab-soft);color:var(--lab-accent);font-size:.78rem;line-height:1.7}.lab-auto-context>svg{flex-shrink:0;margin-top:2px}.lab-saved.wrong{color:var(--lab-bad)}.lab-feedback{padding:18px;border:1px solid var(--border);border-radius:12px;background:var(--secondary);margin-bottom:24px;overflow-wrap:anywhere}.lab-feedback>p,.lab-feedback>div>p{font-size:.85rem;line-height:1.8;margin:14px 0}.lab-feedback small{display:block;margin-top:16px;font-size:.7rem;line-height:1.7;color:var(--lab-text)}.lab-strengths{margin:16px 0;font-size:.8rem}.lab-strengths ul{list-style:disc;padding-left:18px;display:block}.lab-strengths li{border:0;display:list-item;padding:6px 0;font-size:.8rem}.lab-review-priorities{display:flex;flex-direction:column;gap:12px;margin-top:18px}.lab-review-priorities article{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px}.lab-review-priorities h3{font-size:.9rem;color:var(--lab-accent)}.lab-review-priorities p{font-size:.8rem;line-height:1.8;margin:10px 0}.lab-review-priorities .text-link{font-size:.75rem;margin-top:8px}.lab-error-count-title{font-size:.9rem;margin-bottom:12px}
 @media(prefers-reduced-motion:reduce){.lab-skeleton{animation:none}.lab-page *{scroll-behavior:auto!important;transition:none!important}}
+
+/* Shared spacing for quizzes, exams and flashcard review. */
+.lab-page {
+  --lab-layout-gap: clamp(12px, 2vw, 20px);
+  --lab-card-padding: clamp(14px, 2vw, 22px);
+  max-width: 1320px;
+  margin-inline: auto;
+  min-width: 0;
+}
+.lab-page .page-heading {
+  align-items: center;
+  gap: var(--lab-layout-gap);
+  margin-bottom: 24px;
+}
+.lab-page .page-heading > div:first-child { min-width: 0; }
+.lab-page .page-heading p { margin-top: 8px; }
+.lab-page .lab-area-tabs { margin-bottom: 20px; }
+.lab-page .lab-area-tabs .button, .lab-page .lab-launch-actions .button { min-height: 44px; }
+.lab-page .lab-metrics, .lab-page .fc-metrics, .lab-page .lab-insights-grid, .lab-page .fc-insights {
+  gap: var(--lab-layout-gap);
+  align-items: stretch;
+}
+.lab-page .lab-insights-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.lab-page .lab-metric, .lab-page .fc-metric {
+  min-width: 0;
+  padding: var(--lab-card-padding);
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  overflow-wrap: anywhere;
+}
+.lab-page .lab-metric { grid-template-rows: auto auto 1fr; }
+.lab-page .fc-metric { grid-template-rows: 1fr auto auto; }
+.lab-page .lab-metric strong, .lab-page .fc-metric strong {
+  font-size: clamp(1.55rem, 3vw, 2.1rem);
+  line-height: 1.2;
+}
+.lab-page .lab-insights-grid > .panel, .lab-page .fc-insights > .panel,
+.lab-page .lab-builder, .lab-page .lab-runner, .lab-page .lab-history,
+.lab-page .exam-configuration, .lab-page .exam-results {
+  min-width: 0;
+  padding: var(--lab-card-padding);
+}
+.lab-page .fc-toolbar { gap: var(--lab-layout-gap); align-items: end; }
+.lab-page .fc-toolbar select { width: 100%; min-width: 0; }
+.lab-page .exam-result-grid, .lab-page .exam-concepts, .lab-page .fc-card-list { gap: var(--lab-layout-gap); }
+.lab-page .exam-result-grid > *, .lab-page .exam-concepts > *, .lab-page .fc-card-list > * { min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 767px) {
+  .lab-page .page-heading { align-items: flex-start; }
+  .lab-page .lab-insights-grid { grid-template-columns: minmax(0, 1fr); }
+  .lab-page .lab-area-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lab-page .lab-area-tabs .button { white-space: normal; text-align: center; padding-inline: 8px; }
+  .lab-page .fc-metric:last-child { grid-column: 1 / -1; }
+}
+@media (max-width: 420px) {
+  .lab-page .lab-launch-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lab-page .lab-launch-actions .button { min-width: 0; white-space: normal; padding-inline: 8px; }
+}
