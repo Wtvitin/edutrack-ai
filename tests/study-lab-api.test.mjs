@@ -25,7 +25,7 @@ test('laboratory reuses Gemini, Groq and OpenRouter transports without Tools or 
       let calls=0;
       const config=labConfig();
       api=createAPI(db,{origin,local:true,mailMode:'local',env:{},agentConfig:readAgentConfig({LLM_PROVIDER:provider,LLM_MODEL:'mock',GROQ_MODEL:'mock',LLM_FALLBACK_MODEL:'never-use',LLM_TIMEOUT_MS:'120000',GOOGLE_API_KEY:'mock-key',GROQ_API_KEY:'mock-key',OPENROUTER_API_KEY:'mock-key'}),agentTransport:{async post(url,headers,body,timeout){
-        calls++;assert.ok(timeout<=45000);assert.ok(!body.tools?.length);
+        calls++;assert.ok(provider==='google-gemini'?timeout>45000&&timeout<=60000:timeout<=45000);assert.ok(!body.tools?.length);
         assert.doesNotMatch(JSON.stringify(body),/never-use/);
         const content=JSON.stringify(labDocument(config));
         return {status:200,body:provider==='google-gemini'?{candidates:[{content:{role:'model',parts:[{text:content}]},finishReason:'STOP'}]}:{choices:[{message:{content},finish_reason:'stop'}]}};

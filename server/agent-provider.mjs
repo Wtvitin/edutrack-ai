@@ -293,7 +293,7 @@ async function completeGemini(config, transport, request) {
   const systemInstruction = geminiSystemInstruction(request.messages) || { parts: [] };
   if (request.responseFormat && !request.tools?.length) systemInstruction.parts.push({ text: `As ferramentas já foram processadas. Não execute novas ações. Retorne somente JSON válido conforme este schema: ${JSON.stringify(request.responseFormat.schema)}` });
   const body = { systemInstruction: systemInstruction.parts.length ? systemInstruction : undefined, contents, tools: geminiTools(request.tools), generationConfig: { temperature: request.temperature ?? 0.2, maxOutputTokens: request.maxTokens ?? 1600, ...(request.responseFormat && !request.tools?.length ? { responseMimeType: 'application/json', responseJsonSchema: geminiSchema(request.responseFormat.schema, { structured: true }) } : {}) } };
-  const deadline = Date.now() + config.timeoutMs;
+  const deadline = Date.now() + Math.max(config.timeoutMs, request.timeoutMs ?? 0);
   let lastError;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {

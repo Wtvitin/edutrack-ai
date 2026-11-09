@@ -14,6 +14,11 @@ export async function labModelDocument(provider,request,validate){
   }catch(cause){
     if(cause instanceof LabError)throw cause;
     const providerFailure=typeof cause.code==='string'&&(cause.code.startsWith('provider-')||cause.code==='model-not-configured');
-    throw new LabError(providerFailure?agentErrorMessage(cause.code,cause.status):'Não foi possível acessar a IA. Tente novamente mais tarde.',providerFailure&&cause.status===429?429:503,providerFailure?cause.code:'lab-provider-failed');
+    const failure=new LabError(providerFailure?agentErrorMessage(cause.code,cause.status):'Não foi possível acessar a IA. Tente novamente mais tarde.',providerFailure&&cause.status===429?429:503,providerFailure?cause.code:'lab-provider-failed');
+    if(providerFailure){
+      failure.providerStatus=cause.providerStatus;
+      failure.providerCode=cause.providerCode;
+    }
+    throw failure;
   }
 }
