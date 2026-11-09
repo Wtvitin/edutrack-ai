@@ -1,6 +1,6 @@
 import {createReportCache} from './report-cache.mjs';
 import { z } from 'zod';
-import { token,digest,hashPassword,checkPassword,sessionCookie,readSessionCookie } from './security.mjs';
+import { token,digest,hashPassword,checkPassword,sessionCookie,readSessionCookie,signupCookie,matchesSignupCookie } from './security.mjs';
 import { createMailer } from './mail.mjs';
 import { readData,saveData } from './data.mjs';
 import {prepareReportAnalytics} from './report-analytics.mjs';
@@ -28,6 +28,11 @@ function agentFailureDetails(failure,config){
   if(/^[A-Z_0-9]{1,64}$/.test(failure.providerCode||''))details.providerCode=failure.providerCode;
   if(/^[A-Za-z_0-9]{1,64}$/.test(cause?.code||cause?.name||''))details.causeCode=cause.code||cause.name;
   return details;
+}
+async function createSession(db,userId){
+  const raw=token();
+  await db.query("INSERT INTO auth_sessions(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '7 days')",[digest(raw),userId]);
+  return raw;
 }
 function validate(schema,body){const p=schema.safeParse(body);if(!p.success)throw error('Confira os campos informados. A senha deve ter de 10 a 128 caracteres.');return p.data;}
 export function createAPI(db,config) {
@@ -90,9 +95,15 @@ export function createAPI(db,config) {
       if(path==='/api/auth/register'&&req.method==='POST'){
         await limited(req,'register',6);const info=validate(z.object({name:z.string().trim().min(1).max(80),email,password}),input);
         const exists=(await db.query('SELECT * FROM users WHERE email=$1',[info.email])).rows[0];
-        if(!exists){const hash=await hashPassword(info.password);const u=await db.transaction(async tx=>{const user=(await tx.query('INSERT INTO users(name,email,password_hash,updated_at) VALUES($1,$2,$3,now()) RETURNING *',[info.name,info.email,hash])).rows[0];await tx.query("INSERT INTO subjects(user_id,name,color,is_general,updated_at) VALUES($1,'Estudo livre','purple',true,now())",[user.id]);return user;});await sendToken(u,'VERIFY');}
-        else if(!exists.email_verified_at)await sendToken(exists,'VERIFY');
-        respond(200,{message:'Se o endereço estiver disponível, você receberá um link para confirmar sua conta.'});return true;
+        let signup;
+        if(!exists){const hash=await hashPassword(info.password);const u=await db.transaction(async tx=>{const user=(await tx.query('INSERT INTO users(name,email,password_hash,updated_at) VALUES($1,$2,$3,now()) RETURNING *',[info.name,info.email,hash])).rows[0];await tx.query("INSERT INTO subjects(user_id,name,color,is_general,updated_at) VALUES($1,'Estudo livre','purple',true,now())",[user.id]);return user;});
+          await sendToken(u,'VERIFY');
+          signup=u;
+        }else if(!exists.email_verified_at){
+          await sendToken(exists,'VERIFY');
+          if(await checkPassword(info.password,exists.password_hash))signup=exists;
+        }
+        respond(200,{message:'Se o endereço estiver disponível, você receberá um link para confirmar sua conta.'},signupCookie(signup,config.origin));return true;
       }
       if(path==='/api/auth/login'&&req.method==='POST'){
         await limited(req,'login');const info=validate(z.object({email,password:z.string().min(1).max(128)}),input);
@@ -100,7 +111,7 @@ export function createAPI(db,config) {
         dummyHash??=await hashPassword(token());const valid=await checkPassword(info.password,u?.password_hash||dummyHash);
         if(!u||!valid)throw error('E-mail ou senha incorretos.',401);
         if(!u.email_verified_at)throw error('Confirme seu e-mail antes de entrar. Você pode solicitar outro link.',403);
-        const raw=token();await db.query('INSERT INTO auth_sessions(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval \'7 days\')',[digest(raw),u.id]);
+        const raw=await createSession(db,u.id);
         respond(200,{user:account(u)},sessionCookie(raw,config.origin));return true;
       }
       if(['/api/auth/request-reset','/api/auth/resend'].includes(path)&&req.method==='POST'){
@@ -111,14 +122,20 @@ export function createAPI(db,config) {
       if(['/api/auth/verify','/api/auth/reset'].includes(path)&&req.method==='POST'){
         await limited(req,'token',20);const info=validate(z.object({token:z.string().regex(/^[a-f0-9]{64}$/),password:path.endsWith('reset')?password:z.string().optional()}),input);
         const purpose=path.endsWith('reset')?'RESET':'VERIFY';const hash=purpose==='RESET'?await hashPassword(info.password):null;
-        await db.transaction(async tx=>{
+        const session=await db.transaction(async tx=>{
           const entry=(await tx.query('SELECT * FROM auth_tokens WHERE token_hash=$1 AND purpose=$2 AND used_at IS NULL AND expires_at>now() FOR UPDATE',[digest(info.token),purpose])).rows[0];
           if(!entry)throw error('Link inválido, expirado ou já utilizado. Solicite outro.');
-          if(purpose==='VERIFY')await tx.query('UPDATE users SET email_verified_at=now(),updated_at=now() WHERE id=$1',[entry.user_id]);
+          let verifiedUser;
+          if(purpose==='VERIFY'){
+            const verified=await tx.query('UPDATE users SET email_verified_at=now(),updated_at=now() WHERE id=$1 AND email_verified_at IS NULL RETURNING id,password_hash',[entry.user_id]);
+            if(!verified.rows.length)throw error('Este e-mail já foi confirmado. Entre na sua conta.');
+            verifiedUser=verified.rows[0];
+          }
           else{await tx.query('UPDATE users SET password_hash=$2,updated_at=now() WHERE id=$1',[entry.user_id,hash]);await tx.query('DELETE FROM auth_sessions WHERE user_id=$1',[entry.user_id]);}
           await tx.query('UPDATE auth_tokens SET used_at=now() WHERE user_id=$1 AND purpose=$2 AND used_at IS NULL',[entry.user_id,purpose]);
+          return verifiedUser&&matchesSignupCookie(req.headers.cookie,verifiedUser)?createSession(tx,entry.user_id):null;
         });
-        respond(200,{message:purpose==='VERIFY'?'E-mail confirmado! Agora você pode entrar.':'Senha atualizada. Entre novamente com a nova senha.'});return true;
+        respond(200,{message:purpose==='VERIFY'?(session?'E-mail confirmado!':'E-mail confirmado! Agora você pode entrar.'):'Senha atualizada. Entre novamente com a nova senha.',...(purpose==='VERIFY'?{signedIn:!!session}:{})},session?sessionCookie(session,config.origin):undefined);return true;
       }
       if(path==='/api/auth/logout'&&req.method==='POST'){await db.query('DELETE FROM auth_sessions WHERE token_hash=$1',[digest(readSessionCookie(req.headers.cookie))]);respond(200,{ok:true},sessionCookie('',config.origin,true));return true;}
       const user=await auth(req);

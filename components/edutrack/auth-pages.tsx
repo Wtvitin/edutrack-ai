@@ -17,26 +17,39 @@ const emptyToken=()=>'';
 export function AuthPage({page}:{page:string}){
   const [visible,setVisible]=useState(false),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),[success,setSuccess]=useState(false),[resend,setResend]=useState(false);
   const token=useSyncExternalStore(subscribeToLocation,readToken,emptyToken);
+  const awaitingConfirmation=page==='verificar-email'&&!token&&!resend&&!success;
   const content=info[page]||info.login;
   async function submit(e:FormEvent<HTMLFormElement>){
     e.preventDefault();const fields=Object.fromEntries(new FormData(e.currentTarget));setBusy(true);setMessage('');setSuccess(false);
     try{
       if(page==='nova-senha'&&fields.password!==fields.confirmation)throw new Error('As senhas precisam ser iguais.');
       const path=resend?'/auth/resend':({login:'/auth/login',cadastro:'/auth/register','recuperar-senha':'/auth/request-reset','nova-senha':'/auth/reset','verificar-email':'/auth/verify'} as Record<string,string>)[page];
-      const result=await api<{message?:string}>(path,{...fields,token});
-      if(page==='login'&&!resend){localStorage.removeItem('edutrack-mode');await navigateTo('/');return;}
+      const result=await api<{message?:string;signedIn?:boolean}>(path,{...fields,token});
+      if(page==='cadastro'){
+        window.location.replace('/verificar-email');
+        return;
+      }
+      if((page==='login'||(page==='verificar-email'&&result.signedIn))&&!resend){
+        localStorage.removeItem('edutrack-mode');
+        if(page==='verificar-email'){
+          window.location.replace('/');
+        }else{
+          await navigateTo('/');
+        }
+        return;
+      }
       setMessage(result.message||'Concluído.');setSuccess(true);
-      if(page==='nova-senha'||page==='verificar-email')window.history.replaceState(null,'',window.location.pathname);
+      if((page==='nova-senha'||page==='verificar-email')&&!resend)window.history.replaceState(null,'',window.location.pathname);
     }catch(e){setMessage(e instanceof Error?e.message:'Não foi possível concluir.');}finally{setBusy(false);}
   }
-  return <div className="auth-layout"><aside className="auth-story"><Brand/><div><span className="eyebrow">SEU ESPAÇO PARA IR ALÉM</span><h2>Pequenos passos.<br/>Grandes<br/><span>possibilidades.</span></h2><p>Organize seus estudos, encontre seu ritmo e abra espaço para o que vem pela frente.</p></div><span className="auth-tagline">Seu tempo. Seu ritmo. Seu futuro. <Sparkles size={17}/></span></aside><main className="auth-main"><Link className="back-link" href="/inicio"><ArrowLeft size={16}/>Voltar ao início</Link><div className="auth-card"><span className="eyebrow">BEM-VINDO AO EDUTRACK AI</span><h1>{resend?'Solicitar nova confirmação':content.title}</h1><p className="section-description">{content.description}</p>
+  return <div className="auth-layout"><aside className="auth-story"><Brand/><div><span className="eyebrow">SEU ESPAÇO PARA IR ALÉM</span><h2>Pequenos passos.<br/>Grandes<br/><span>possibilidades.</span></h2><p>Organize seus estudos, encontre seu ritmo e abra espaço para o que vem pela frente.</p></div><span className="auth-tagline">Seu tempo. Seu ritmo. Seu futuro. <Sparkles size={17}/></span></aside><main className="auth-main"><Link className="back-link" href="/inicio"><ArrowLeft size={16}/>Voltar ao início</Link><div className="auth-card"><span className="eyebrow">BEM-VINDO AO EDUTRACK AI</span><h1>{resend?'Solicitar nova confirmação':awaitingConfirmation?'Aguardando confirmação do e-mail':content.title}</h1><p className="section-description">{awaitingConfirmation?'Abra sua caixa de entrada e siga o link de confirmação para entrar no EduTrack.':content.description}</p>
     <form className="edu-form" onSubmit={submit}>
       {page==='cadastro'&&<div className="field"><label htmlFor="auth-name">Seu nome</label><input id="auth-name" name="name" autoComplete="name" required maxLength={80}/></div>}
       {(!['nova-senha','verificar-email'].includes(page)||resend)&&<div className="field"><label htmlFor="auth-email">E-mail</label><input id="auth-email" name="email" type="email" autoComplete="email" required maxLength={254} placeholder="voce@gmail.com"/></div>}
       {['login','cadastro','nova-senha'].includes(page)&&!resend&&<div className="field"><div className="field-label-row"><label htmlFor="auth-password">{page==='nova-senha'?'Nova senha':'Senha'}</label>{page==='login'&&<Link href="/recuperar-senha">Esqueci minha senha</Link>}</div><div className="password-field"><input id="auth-password" name="password" type={visible?'text':'password'} minLength={page==='login'?1:10} maxLength={128} required autoComplete={page==='login'?'current-password':'new-password'} placeholder="Pelo menos 10 caracteres"/><button type="button" onClick={()=>setVisible(!visible)} aria-label={visible?'Ocultar senha':'Mostrar senha'}>{visible?<EyeOff size={18}/>:<Eye size={18}/>}</button></div></div>}
       {page==='nova-senha'&&<div className="field"><label htmlFor="auth-confirm">Confirme a nova senha</label><input id="auth-confirm" name="confirmation" type="password" minLength={10} maxLength={128} required autoComplete="new-password"/></div>}
-      {page==='verificar-email'&&!resend&&<div className="email-illustration"><Mail size={42}/><p>{token?'Clique abaixo para confirmar seu endereço.':'Abra o link enviado ao seu e-mail ou solicite uma nova confirmação.'}</p></div>}
-      <button className="button primary full-width" disabled={busy||((page==='verificar-email'||page==='nova-senha')&&!token&&!resend)||success&&['nova-senha','verificar-email'].includes(page)&&!resend}>{busy?'Aguarde…':resend?'Enviar novo link':content.button}<ArrowRight size={16}/></button>
+      {page==='verificar-email'&&!resend&&<div className="email-illustration"><Mail size={42}/><p>{token?'Clique abaixo para confirmar seu endereço.':'Se o link não chegar, confira o spam ou solicite um novo envio.'}</p></div>}
+      {!awaitingConfirmation&&<button className="button primary full-width" disabled={busy||(!resend&&['nova-senha','verificar-email'].includes(page)&&(!token||success))}>{busy?'Aguarde…':resend?'Enviar novo link':content.button}<ArrowRight size={16}/></button>}
       {message&&<p className={`form-feedback ${success?'success':'error'}`} role={success?'status':'alert'}>{message}</p>}
     </form>
     {['login','verificar-email'].includes(page)&&<button className="text-link resend-button" onClick={()=>{setResend(!resend);setMessage('');setSuccess(false);}}>{resend?'Voltar':'Não recebi a confirmação'}</button>}
