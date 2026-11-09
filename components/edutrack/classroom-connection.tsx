@@ -1,7 +1,8 @@
 "use client";
-import {useCallback,useEffect,useState} from 'react';
-import {Link2,RefreshCw,ShieldCheck,Unplug} from 'lucide-react';
-import {AlertDialog,AlertDialogAction,AlertDialogCancel,AlertDialogContent,AlertDialogDescription,AlertDialogFooter,AlertDialogHeader,AlertDialogTitle,AlertDialogTrigger} from '@/components/ui/alert-dialog';
+import {useCallback,useEffect,useRef,useState} from 'react';
+import {BookOpenCheck,Check,Link2,MoreVertical,RefreshCw,Unplug} from 'lucide-react';
+import {AlertDialog,AlertDialogAction,AlertDialogCancel,AlertDialogContent,AlertDialogDescription,AlertDialogFooter,AlertDialogHeader,AlertDialogTitle} from '@/components/ui/alert-dialog';
+import {DropdownMenu,DropdownMenuContent,DropdownMenuItem,DropdownMenuTrigger} from '@/components/ui/dropdown-menu';
 import {api} from './account-store';
 import Link from './link';
 import {ClassroomDeliveryStatus} from './classroom-deliveries';
@@ -10,7 +11,7 @@ type Status={configured:boolean;connected:boolean;lastSyncAt:string|null;selecte
 type Course={id:string;name:string;section:string};
 type ImportResult={created:number;updated:number;unchanged:number;skippedDeleted:number;subjectsCreated:number};
 const callbackMessages:Record<string,string>={
-  connected:'Classroom autorizado. Escolha suas turmas para importar as atividades.',
+  connected:'Classroom autorizado. Escolha as turmas que você quer importar.',
   'classroom-denied':'Você cancelou a autorização. Nenhuma conta foi conectada.',
   'classroom-state':'A autorização expirou ou já foi utilizada. Clique em conectar novamente.',
   'classroom-scope':'É necessário autorizar a leitura das turmas e atividades.',
@@ -28,6 +29,8 @@ export function ClassroomConnection({mode,saving,onImported}:{mode:'account'|'de
   const [status,setStatus]=useState<Status|null>(null),[courses,setCourses]=useState<Course[]>([]);
   const [selected,setSelected]=useState<string[]>([]),[busy,setBusy]=useState(false),[loading,setLoading]=useState(mode==='account');
   const [error,setError]=useState(''),[notice,setNotice]=useState(''),[result,setResult]=useState<ImportResult|null>(null);
+  const [confirmDisconnect,setConfirmDisconnect]=useState(false);
+  const menuButton=useRef<HTMLButtonElement>(null);
   const load=useCallback(()=>api<Status>('/integrations/classroom/status').then(async next=>{
       setStatus(next);setError('');
       if(next.connected&&next.configured){
@@ -81,26 +84,77 @@ export function ClassroomConnection({mode,saving,onImported}:{mode:'account'|'de
     finally{setBusy(false);}
   }
   const disabled=busy||saving||loading;
+  const connected=!!(status?.configured&&status.connected);
+  const label=mode==='demo'?'Demonstração':loading?'Verificando…':connected?'Conectado':status?.configured?'Não conectado':status?'Não configurado':'Indisponível';
+
   return <section className="classroom-connection" id="classroom-connection" aria-labelledby="classroom-connection-title" aria-busy={busy||loading}>
-    <div className="classroom-connection-heading"><div><h2 id="classroom-connection-title">Sua conexão com o Classroom</h2><p>Importe suas atividades uma vez e acompanhe as entregas automaticamente. Nenhum trabalho será enviado ou alterado no Google.</p></div><span className="integration-status">{mode==='demo'?'Demonstração':loading?'Verificando…':status?.connected?'Conectado':status?.configured?'Pronto para conectar':'Não configurado'}</span></div>
-    <ClassroomDeliveryStatus/>
-    {mode==='demo'?<p className="classroom-info">A demonstração não conecta contas externas. <Link href="/login" className="text-link">Entre na sua conta para conectar</Link>.</p>:<>
+    <header className="classroom-connection-heading">
+      <span className="classroom-mark" aria-hidden="true"><BookOpenCheck size={26}/></span>
+      <div className="classroom-connection-name">
+        <div><h2 id="classroom-connection-title">Google Classroom</h2><span className={`classroom-status${connected?' is-connected':''}`}>{connected&&<Check size={14}/>} {label}</span></div>
+        <p>Somente leitura</p>
+      </div>
+      {connected&&<DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button ref={menuButton} type="button" className="icon-button classroom-menu" aria-label="Opções do Classroom" disabled={disabled}><MoreVertical size={20}/></button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onSelect={()=>void connect()}><Link2 size={16}/>Reconectar Google</DropdownMenuItem>
+          <DropdownMenuItem onSelect={()=>setConfirmDisconnect(true)}><Unplug size={16}/>Desconectar</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>}
+    </header>
+
+    {mode==='demo'?<p className="classroom-info">Entre na sua conta para conectar o Classroom. <Link href="/login" className="text-link">Entrar</Link></p>:<>
       {notice&&<p className="classroom-info" role="status">{notice}</p>}
       {error&&<p className="classroom-error" role="alert">{error}</p>}
-      {loading&&<p role="status" className="classroom-info">Carregando sua conexão e suas turmas…</p>}
-      {!loading&&status&&!status.configured&&<p className="classroom-info">Este servidor precisa do JSON OAuth e da chave de proteção dos tokens. Consulte a configuração do Classroom no projeto.</p>}
-      {!loading&&status?.configured&&<div className="classroom-actions"><button className="button primary" disabled={disabled} onClick={()=>void connect()}><Link2 size={17}/>{status.connected?'Reconectar Google':'Conectar Google Classroom'}</button>
-        {status.connected&&<><button className="button secondary" disabled={disabled} onClick={refresh}><RefreshCw size={17}/>Atualizar turmas</button><AlertDialog><AlertDialogTrigger asChild><button className="button secondary" disabled={disabled}><Unplug size={17}/>Desconectar</button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Desconectar o Classroom?</AlertDialogTitle><AlertDialogDescription>O acesso no Google será revogado e os tokens locais serão removidos. Suas tarefas e disciplinas importadas permanecerão no EduTrack.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={()=>void disconnect()}>Desconectar</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></>}
+      {loading&&<p className="classroom-caption" role="status">Carregando sua conexão e suas turmas…</p>}
+      {!loading&&status&&!status.configured&&<p className="classroom-info">O Classroom ainda não foi configurado neste servidor.</p>}
+      {!loading&&status?.configured&&!connected&&<div className="classroom-actions">
+        <p className="classroom-caption">Conecte sua conta Google para escolher as turmas que deseja importar.</p>
+        <button type="button" className="button primary" disabled={disabled} onClick={()=>void connect()}><Link2 size={17}/>{busy?'Aguarde…':'Conectar Google Classroom'}</button>
       </div>}
-      {!loading&&status?.connected&&<>
-        <fieldset className="classroom-courses" disabled={disabled}><legend>Escolha até 20 turmas para importar</legend><p>Todas as atividades publicadas e disponíveis para você nas turmas escolhidas serão importadas. Cada turma terá uma disciplina própria.</p>
-          {courses.length?courses.map(course=><label className="classroom-course" key={course.id}><input type="checkbox" checked={selected.includes(course.id)} onChange={event=>setSelected(previous=>event.target.checked?[...previous,course.id]:previous.filter(id=>id!==course.id))} disabled={disabled||!selected.includes(course.id)&&selected.length>=20}/><span><strong>{course.name}</strong>{course.section&&<small>{course.section}</small>}</span></label>):!error&&<p>Nenhuma turma ativa encontrada para você como aluno. Confira a conta Google usada e, se necessário, as permissões da instituição.</p>}
+      {connected&&<>
+        <div className="classroom-courses-heading">
+          <h3 id="classroom-courses-title">Suas turmas</h3>
+          <button type="button" className="button secondary" disabled={disabled} onClick={refresh}><RefreshCw size={15}/>Atualizar turmas</button>
+        </div>
+        <fieldset className="classroom-courses" aria-labelledby="classroom-courses-title" disabled={disabled}>
+          {courses.map(course=><label className="classroom-course" key={course.id}>
+            <input type="checkbox" checked={selected.includes(course.id)} onChange={event=>setSelected(previous=>event.target.checked?[...previous,course.id]:previous.filter(id=>id!==course.id))} disabled={!selected.includes(course.id)&&selected.length>=20}/>
+            <span><strong>{course.name}</strong>{course.section&&<small>{course.section}</small>}</span>
+          </label>)}
+          {!loading&&!error&&!courses.length&&<p className="classroom-caption">Nenhuma turma ativa encontrada como aluno. Confira a conta Google conectada.</p>}
         </fieldset>
-        <div className="classroom-sync-footer"><button className="button primary" disabled={disabled||!selected.length} onClick={()=>void sync()}><RefreshCw size={17}/>{busy?'Aguarde…':'Sincronizar atividades'}{!busy&&selected.length>0?` (${selected.length} ${selected.length===1?'turma':'turmas'})`:''}</button><p>Última sincronização: {status.lastSyncAt?new Date(status.lastSyncAt).toLocaleString('pt-BR'):'ainda não realizada'}</p></div>
+        {courses.length>0&&<div className="classroom-sync-footer">
+          <button type="button" className="button primary" disabled={disabled||!selected.length} onClick={()=>void sync()}><RefreshCw size={17}/>{busy?'Aguarde…':'Sincronizar atividades'}</button>
+          <div aria-live="polite">
+            <strong>{selected.length===1?'1 turma selecionada':`${selected.length} turmas selecionadas`}</strong>
+            {selected.length>=20&&<p>Limite de 20 turmas atingido.</p>}
+            <p>Última sincronização: {status?.lastSyncAt?new Date(status.lastSyncAt).toLocaleString('pt-BR'):'ainda não realizada'}</p>
+          </div>
+        </div>}
+        <details className="classroom-details">
+          <summary>Sobre a sincronização</summary>
+          <p>O EduTrack importa as atividades publicadas das turmas selecionadas e preserva suas alterações locais. As entregas no Google continuam sob seu controle.</p>
+          <ClassroomDeliveryStatus/>
+        </details>
       </>}
       {result&&<p className="classroom-info" role="status">Importação concluída: {result.created} novas, {result.updated} atualizadas e {result.unchanged} sem alterações. {result.subjectsCreated} disciplinas criadas.{result.skippedDeleted>0?` ${result.skippedDeleted} atividades removidas no EduTrack não foram recriadas.`:''} <Link href="/tarefas" className="text-link">Ver tarefas</Link></p>}
-      {!loading&&!status&&<button className="button secondary" disabled={busy} onClick={refresh}>Tentar novamente</button>}
+      {!loading&&!status&&<button type="button" className="button secondary" disabled={busy} onClick={refresh}>Tentar novamente</button>}
     </>}
-    <p className="classroom-permissions"><ShieldCheck size={17}/>Tokens protegidos no servidor. Prioridades, conclusões, estimativas e alterações pessoais são preservadas. O calendário mostra o dia em Brasília; consulte a origem para o horário exato. Sincronizar não marca entregas do Google como concluídas.</p>
+
+    <AlertDialog open={confirmDisconnect} onOpenChange={setConfirmDisconnect}>
+      <AlertDialogContent onCloseAutoFocus={event=>{event.preventDefault();menuButton.current?.focus();}}>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Desconectar o Classroom?</AlertDialogTitle>
+          <AlertDialogDescription>O acesso no Google será revogado. As tarefas e disciplinas já importadas permanecem no EduTrack.</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+          <AlertDialogAction onClick={()=>void disconnect()}>Desconectar</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   </section>;
 }
