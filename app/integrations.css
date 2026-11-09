@@ -128,3 +128,56 @@
 @media (prefers-reduced-motion: reduce) {
   .classroom-progress-track span { animation: none; transform: translateX(80%); }
 }
+
+.integrations-page { max-width: 1280px; margin-inline: auto; }
+.classroom-page-heading { justify-content: flex-start; align-items: center; gap: 14px; }
+.classroom-page-heading p { margin-top: 4px; }
+.classroom-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(210px, 270px);
+  gap: clamp(16px, 2.5vw, 28px);
+  align-items: start;
+}
+.classroom-connection-heading, .classroom-sync-footer, .classroom-transfer {
+  background: var(--secondary);
+  border-radius: 12px;
+  padding: 14px;
+}
+.classroom-course {
+  margin-top: 5px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+.classroom-course:has(input:checked) { background: #efebff; border-color: #e0d7fc; }
+.dark .classroom-course:has(input:checked) { background: #2e274a; border-color: #493d6d; }
+.classroom-summary {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--card);
+}
+.classroom-transfer { display: flex; justify-content: center; align-items: center; gap: 12px; color: #7962d7; margin-bottom: 14px; }
+.classroom-planning-mark {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  flex: 0 0 auto;
+  border-radius: 12px;
+  background: #eee9ff;
+  color: #5b44c4;
+}
+.dark .classroom-planning-mark { background: #392e58; color: #cfbfff; }
+.classroom-summary p { color: var(--integration-muted); font-size: .85rem; margin-top: 8px; }
+.classroom-summary time { display: block; font-size: .9rem; font-weight: 600; }
+.classroom-summary .text-link { display: inline-flex; margin-top: 14px; }
+@media (max-width: 1100px) {
+  .classroom-layout { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 560px) {
+  .classroom-connection-heading { padding: 8px; }
+  .classroom-page-heading { align-items: flex-start; }
+  .classroom-page-heading .classroom-planning-mark { width: 40px; height: 40px; }
+}

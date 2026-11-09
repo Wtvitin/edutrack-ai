@@ -1,6 +1,6 @@
 "use client";
 import {useCallback,useEffect,useRef,useState} from 'react';
-import {BookOpenCheck,Check,Link2,MoreVertical,RefreshCw,Unplug} from 'lucide-react';
+import {ArrowRight,BookOpenCheck,CalendarDays,Check,Link2,MoreVertical,RefreshCw,Unplug} from 'lucide-react';
 import {AlertDialog,AlertDialogAction,AlertDialogCancel,AlertDialogContent,AlertDialogDescription,AlertDialogFooter,AlertDialogHeader,AlertDialogTitle} from '@/components/ui/alert-dialog';
 import {DropdownMenu,DropdownMenuContent,DropdownMenuItem,DropdownMenuTrigger} from '@/components/ui/dropdown-menu';
 import {api} from './account-store';
@@ -89,7 +89,7 @@ export function ClassroomConnection({mode,saving,onImported}:{mode:'account'|'de
   const connected=!!(status?.configured&&status.connected);
   const label=mode==='demo'?'Demonstração':loading?'Verificando…':connected?'Conectado':status?.configured?'Não conectado':status?'Não configurado':'Indisponível';
 
-  return <section className="classroom-connection" id="classroom-connection" aria-labelledby="classroom-connection-title">
+  return <div className="classroom-layout"><section className="classroom-connection" id="classroom-connection" aria-labelledby="classroom-connection-title">
     <header className="classroom-connection-heading">
       <span className="classroom-mark" aria-hidden="true"><BookOpenCheck size={26}/></span>
       <div className="classroom-connection-name">
@@ -122,7 +122,7 @@ export function ClassroomConnection({mode,saving,onImported}:{mode:'account'|'de
       </div>}
       {connected&&<>
         <div className="classroom-courses-heading">
-          <h3 id="classroom-courses-title">Suas turmas</h3>
+          <div><h3 id="classroom-courses-title">Suas turmas</h3><p className="classroom-caption">Selecione as turmas que deseja importar.</p></div>
           <button type="button" className="button secondary" disabled={disabled} onClick={refresh}><RefreshCw size={15}/>Atualizar turmas</button>
         </div>
         <fieldset className="classroom-courses" aria-labelledby="classroom-courses-title" disabled={disabled}>
@@ -137,7 +137,6 @@ export function ClassroomConnection({mode,saving,onImported}:{mode:'account'|'de
           <div aria-live="polite">
             <strong>{selected.length===1?'1 turma selecionada':`${selected.length} turmas selecionadas`}</strong>
             {selected.length>=20&&<p>Limite de 20 turmas atingido.</p>}
-            <p>Última sincronização: {status?.lastSyncAt?new Date(status.lastSyncAt).toLocaleString('pt-BR'):'ainda não realizada'}</p>
           </div>
         </div>}
         <details className="classroom-details">
@@ -162,5 +161,16 @@ export function ClassroomConnection({mode,saving,onImported}:{mode:'account'|'de
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
-  </section>;
+  </section>
+  <aside className="classroom-summary" aria-labelledby="classroom-summary-title">
+    <div className="classroom-transfer" aria-hidden="true">
+      <span className="classroom-mark"><BookOpenCheck size={24}/></span>
+      <ArrowRight size={22}/>
+      <span className="classroom-planning-mark"><CalendarDays size={24}/></span>
+    </div>
+    <h2 id="classroom-summary-title">No seu planejamento</h2>
+    <p>{connected?(status?.lastSyncAt?'Última sincronização':'Nenhuma sincronização realizada ainda.'):'As atividades importadas aparecem em Tarefas.'}</p>
+    {connected&&status?.lastSyncAt&&<time dateTime={status.lastSyncAt}>{new Date(status.lastSyncAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',dateStyle:'short',timeStyle:'short'})}</time>}
+    <Link href="/tarefas" className="text-link">Ver tarefas <ArrowRight size={16}/></Link>
+  </aside></div>;
 }
