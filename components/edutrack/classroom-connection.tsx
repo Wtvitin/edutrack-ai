@@ -27,7 +27,7 @@ const callbackMessages:Record<string,string>={
 };
 export function ClassroomConnection({mode,saving,onImported}:{mode:'account'|'demo';saving:boolean;onImported:()=>Promise<void>}){
   const [status,setStatus]=useState<Status|null>(null),[courses,setCourses]=useState<Course[]>([]);
-  const [selected,setSelected]=useState<string[]>([]),[busy,setBusy]=useState(false),[loading,setLoading]=useState(mode==='account');
+  const [selected,setSelected]=useState<string[]>([]),[action,setAction]=useState<'connect'|'sync'|'disconnect'|null>(null),[loading,setLoading]=useState(mode==='account');
   const [error,setError]=useState(''),[notice,setNotice]=useState(''),[result,setResult]=useState<ImportResult|null>(null);
   const [confirmDisconnect,setConfirmDisconnect]=useState(false);
   const menuButton=useRef<HTMLButtonElement>(null);
@@ -53,17 +53,17 @@ export function ClassroomConnection({mode,saving,onImported}:{mode:'account'|'de
   },[mode,load]);
   function refresh(){setLoading(true);setError('');void load();}
   async function connect(){
-    setBusy(true);setError('');
+    setAction('connect');setError('');
     try{
       await window.edutrackFlush?.();
       const response=await api<{authorizationUrl:string}>('/integrations/classroom/connect',{});
       const url=new URL(response.authorizationUrl);
       if(url.protocol!=='https:'||url.hostname!=='accounts.google.com')throw new Error('Endereço de autorização inválido.');
       window.location.assign(url.href);
-    }catch(e){setError(e instanceof Error?e.message:'Não foi possível iniciar a autorização.');setBusy(false);}
+    }catch(e){setError(e instanceof Error?e.message:'Não foi possível iniciar a autorização.');setAction(null);}
   }
   async function sync(){
-    setBusy(true);setError('');setNotice('');setResult(null);
+    setAction('sync');setError('');setNotice('');setResult(null);
     try{
       await window.edutrackFlush?.();
       const snapshot=await api<{revision:number}>('/data');
@@ -72,22 +72,24 @@ export function ClassroomConnection({mode,saving,onImported}:{mode:'account'|'de
       window.dispatchEvent(new Event('edutrack-classroom-changed'));
       try{await onImported();await load();}catch{setError('A importação foi concluída, mas a interface não atualizou. Recarregue a página.');}
     }catch(e){setError(e instanceof Error?e.message:'Não foi possível importar as atividades.');}
-    finally{setBusy(false);}
+    finally{setAction(null);}
   }
   async function disconnect(){
-    setBusy(true);setError('');setResult(null);
+    setAction('disconnect');setError('');setResult(null);
     try{
       await api('/integrations/classroom/disconnect',{});
       window.dispatchEvent(new Event('edutrack-classroom-changed'));
       setNotice('Conexão removida. As tarefas e disciplinas já importadas foram mantidas.');await load();
     }catch(e){setError(e instanceof Error?e.message:'Não foi possível desconectar.');}
-    finally{setBusy(false);}
+    finally{setAction(null);}
   }
+  const busy=action!==null;
   const disabled=busy||saving||loading;
+  const progressLabel=action==='sync'?'Sincronizando atividades…':loading?'Carregando turmas e conexão…':null;
   const connected=!!(status?.configured&&status.connected);
   const label=mode==='demo'?'Demonstração':loading?'Verificando…':connected?'Conectado':status?.configured?'Não conectado':status?'Não configurado':'Indisponível';
 
-  return <section className="classroom-connection" id="classroom-connection" aria-labelledby="classroom-connection-title" aria-busy={busy||loading}>
+  return <section className="classroom-connection" id="classroom-connection" aria-labelledby="classroom-connection-title">
     <header className="classroom-connection-heading">
       <span className="classroom-mark" aria-hidden="true"><BookOpenCheck size={26}/></span>
       <div className="classroom-connection-name">
@@ -104,11 +106,15 @@ export function ClassroomConnection({mode,saving,onImported}:{mode:'account'|'de
         </DropdownMenuContent>
       </DropdownMenu>}
     </header>
+    {progressLabel&&<div className="classroom-progress">
+      <p className="classroom-caption" role="status">{progressLabel}</p>
+      <div className="classroom-progress-track" role="progressbar" aria-label={progressLabel}><span aria-hidden="true"/></div>
+    </div>}
 
     {mode==='demo'?<p className="classroom-info">Entre na sua conta para conectar o Classroom. <Link href="/login" className="text-link">Entrar</Link></p>:<>
       {notice&&<p className="classroom-info" role="status">{notice}</p>}
       {error&&<p className="classroom-error" role="alert">{error}</p>}
-      {loading&&<p className="classroom-caption" role="status">Carregando sua conexão e suas turmas…</p>}
+
       {!loading&&status&&!status.configured&&<p className="classroom-info">O Classroom ainda não foi configurado neste servidor.</p>}
       {!loading&&status?.configured&&!connected&&<div className="classroom-actions">
         <p className="classroom-caption">Conecte sua conta Google para escolher as turmas que deseja importar.</p>
@@ -127,7 +133,7 @@ export function ClassroomConnection({mode,saving,onImported}:{mode:'account'|'de
           {!loading&&!error&&!courses.length&&<p className="classroom-caption">Nenhuma turma ativa encontrada como aluno. Confira a conta Google conectada.</p>}
         </fieldset>
         {courses.length>0&&<div className="classroom-sync-footer">
-          <button type="button" className="button primary" disabled={disabled||!selected.length} onClick={()=>void sync()}><RefreshCw size={17}/>{busy?'Aguarde…':'Sincronizar atividades'}</button>
+          <button type="button" className="button primary" disabled={disabled||!selected.length} onClick={()=>void sync()}><RefreshCw size={17}/>{action==='sync'?'Sincronizando…':'Sincronizar atividades'}</button>
           <div aria-live="polite">
             <strong>{selected.length===1?'1 turma selecionada':`${selected.length} turmas selecionadas`}</strong>
             {selected.length>=20&&<p>Limite de 20 turmas atingido.</p>}
@@ -140,7 +146,7 @@ export function ClassroomConnection({mode,saving,onImported}:{mode:'account'|'de
           <ClassroomDeliveryStatus/>
         </details>
       </>}
-      {result&&<p className="classroom-info" role="status">Importação concluída: {result.created} novas, {result.updated} atualizadas e {result.unchanged} sem alterações. {result.subjectsCreated} disciplinas criadas.{result.skippedDeleted>0?` ${result.skippedDeleted} atividades removidas no EduTrack não foram recriadas.`:''} <Link href="/tarefas" className="text-link">Ver tarefas</Link></p>}
+      {result&&<p className="classroom-info classroom-success" role="status"><Check size={16} aria-hidden="true"/> Importação concluída: {result.created} novas, {result.updated} atualizadas e {result.unchanged} sem alterações. {result.subjectsCreated} disciplinas criadas.{result.skippedDeleted>0?` ${result.skippedDeleted} atividades removidas no EduTrack não foram recriadas.`:''} <Link href="/tarefas" className="text-link">Ver tarefas</Link></p>}
       {!loading&&!status&&<button type="button" className="button secondary" disabled={busy} onClick={refresh}>Tentar novamente</button>}
     </>}
 

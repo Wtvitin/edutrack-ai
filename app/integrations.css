@@ -97,3 +97,34 @@
   .classroom-mark { width: 40px; height: 40px; }
   .classroom-actions .button, .classroom-sync-footer .button { width: 100%; justify-content: center; }
 }
+
+.classroom-progress { margin: 0 0 14px; }
+.classroom-progress-track {
+  height: 5px;
+  margin-top: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--secondary);
+}
+.classroom-progress-track span {
+  display: block;
+  width: 38%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #6352e8, #a391fa);
+  animation: classroom-progress-sweep 1.35s ease-in-out infinite;
+}
+@keyframes classroom-progress-sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(265%); }
+}
+.classroom-success {
+  background: #edf8f0;
+  border-color: #cde7d5;
+  color: #205e3a;
+}
+.classroom-success > svg { display: inline-block; vertical-align: text-bottom; }
+.dark .classroom-success { background: #20382c; border-color: #315841; color: #a6e5bc; }
+@media (prefers-reduced-motion: reduce) {
+  .classroom-progress-track span { animation: none; transform: translateX(80%); }
+}
