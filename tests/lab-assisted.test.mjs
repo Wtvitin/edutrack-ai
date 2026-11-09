@@ -133,3 +133,22 @@ test('assisted failures reject forged context/evidence and never silently regene
     });
   }finally{await db.close();}
 });
+
+test('a timed-out quiz can retry the same draft only once and keeps a useful title',async()=>{
+  const {db,a,b,lab,state}=await fixture();
+  try{
+    const draft=await lab.prepare(a,{requestId:randomUUID(),prompt:'Monte um quiz de Python'});
+    assert.equal(draft.topic,'Quiz · Python');
+    state.failure=Object.assign(new Error('timeout'),{code:'provider-timeout',status:504});
+    await assert.rejects(lab.generatePrepared(a,draft.id,{}),e=>e.code==='provider-timeout');
+    const failed=await lab.detail(a,draft.id);
+    assert.equal(failed.canRetryGeneration,true);
+    assert.equal(failed.questions.length,0);
+    await assert.rejects(lab.generatePrepared(b,draft.id,{retry:true}),e=>e.status===404);
+    assert.equal((await lab.generatePrepared(a,draft.id,{})).status,'failed');
+    await assert.rejects(lab.generatePrepared(a,draft.id,{retry:true}),e=>e.code==='provider-timeout');
+    assert.equal((await lab.detail(a,draft.id)).canRetryGeneration,false);
+    assert.equal((await lab.generatePrepared(a,draft.id,{retry:true})).status,'failed');
+    assert.equal(state.calls.length,2);
+  }finally{await db.close();}
+});

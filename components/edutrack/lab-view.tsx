@@ -1,7 +1,7 @@
 "use client";
 
 import {useSearchParams} from 'next/navigation';
-import {useCallback,useEffect,useRef,useState,type FormEvent} from 'react';
+import {useCallback,useEffect,useEffectEvent,useRef,useState,type FormEvent} from 'react';
 import {ArrowLeft,ArrowRight,BookOpen,Check,Clock3,FlaskConical,Lightbulb,RotateCcw,ShieldCheck,Sparkles,Target,Trophy} from 'lucide-react';
 import type {StudyData} from '@/lib/edutrack';
 import type {LabActivity,LabConfig,LabOverview} from '@/lib/lab-types';
@@ -34,26 +34,48 @@ export function LabView({data,mode}:{data:StudyData;mode:'account'|'demo'}){
   const [reviewBusy,setReviewBusy]=useState(false),[reviewError,setReviewError]=useState('');
   const inFlight=useRef(false),alive=useRef(true),heading=useRef<HTMLHeadingElement>(null);
   const refresh=useCallback(async()=>{const value=await labRequest<LabOverview>('/api/lab?page='+historyPage);if(alive.current){setOverview(value);setLoaded(true);}},[historyPage]);
-  const loadActivity=useCallback(async(id:string)=>{
-    const value=await labRequest<LabActivity>(`/api/lab/quizzes/${id}`);
-    return value.mode==='quiz'&&value.status==='draft'?labRequest<LabActivity>(`/api/lab/quizzes/${id}/generate`,{}):value;
-  },[]);
+  const [openingId,setOpeningId]=useState<string|null>(null);
+  const opening=openingId!==null&&openingId===requestedActivity&&tab==='activities';
+  const refreshAfterGeneration=useEffectEvent(()=>{void refresh().catch(()=>{});});
   useEffect(()=>{
     alive.current=true;
-    if(mode!=='account')return()=>{alive.current=false;};
-    async function load(){
-      try{
-        await refresh();
-        const id=requestedActivity;
-        if(id&&/^[a-f\d-]{36}$/i.test(id)){
-          const recovered=await loadActivity(id);
-          if(alive.current){setActivity(recovered);setIndex(recovered.questions.findIndex(q=>q.selectedIndex===null)>=0?recovered.questions.findIndex(q=>q.selectedIndex===null):0);}
-        }
-      }catch(e){if(alive.current)setError(e instanceof Error?e.message:'Não foi possível carregar.');}
-      finally{if(alive.current)setLoading(false);}
+    if(mode==='account'){
+      void refresh().catch(e=>{if(alive.current)setError(e instanceof Error?e.message:'Não foi possível carregar o histórico.');})
+        .finally(()=>{if(alive.current)setLoading(false);});
     }
-    void load();return()=>{alive.current=false;};
-  },[mode,refresh,loadActivity,requestedActivity]);
+    return()=>{alive.current=false;};
+  },[mode,refresh]);
+
+  useEffect(()=>{
+    if(mode!=='account'||tab!=='activities'||!requestedActivity||!/^[a-f\d-]{36}$/i.test(requestedActivity))return;
+    const path='/api/lab/quizzes/'+requestedActivity;
+    let active=true;
+    const show=(next:LabActivity)=>{
+      if(!active)return;
+      setActivity(next);
+      setSelection(null);
+      setShowForm(false);
+      setIndex(Math.max(0,next.questions.findIndex(q=>q.selectedIndex===null)));
+    };
+    async function openRequested(){
+      setOpeningId(requestedActivity);
+      setError('');
+      try{
+        const draft=await labRequest<LabActivity>(path);
+        if(!active)return;
+        show(draft);
+        requestAnimationFrame(()=>{if(active)document.getElementById('lab-activity-panel')?.scrollIntoView({block:'start'});});
+        if(draft.mode==='quiz'&&draft.status==='draft'){
+          try{show(await labRequest<LabActivity>(path+'/generate',{}));}
+          catch(e){show(await labRequest<LabActivity>(path));throw e;}
+          finally{if(active)refreshAfterGeneration();}
+        }
+      }catch(e){if(active)setError(e instanceof Error?e.message:'Não foi possível abrir a atividade.');}
+      finally{if(active)setOpeningId(null);}
+    }
+    void openRequested();
+    return()=>{active=false;};
+  },[mode,tab,requestedActivity]);
   async function perform(work:()=>Promise<void>){
     if(inFlight.current)return;inFlight.current=true;setBusy(true);setError('');
     try{await work();}catch(e){if(alive.current)setError(e instanceof Error?e.message:'Não foi possível concluir.');}
@@ -76,15 +98,27 @@ export function LabView({data,mode}:{data:StudyData;mode:'account'|'demo'}){
   function generateAutomatic(event:FormEvent){
     event.preventDefault();void perform(async()=>{
       const request=autoPending||{requestId:crypto.randomUUID(),prompt};setAutoPending(request);
-      const draft=await labRequest<LabActivity>('/api/lab/requests',request);display(draft);setIndex(0);
-      try{display(await loadActivity(draft.id));setAutoPending(null);}
-      catch(cause){try{display(await labRequest<LabActivity>(`/api/lab/quizzes/${draft.id}`));}catch{}throw cause;}
-      finally{await refresh();}
+      const draft=await labRequest<LabActivity>('/api/lab/requests',request);
+      setAutoPending(null);
+      display(draft);
+      setIndex(0);
     });
   }
-  function open(id:string){void perform(async()=>{
-    const next=await loadActivity(id);display(next);
-    const first=next.questions.findIndex(q=>q.selectedIndex===null);setIndex(first<0?0:first);
+  function open(id:string){
+    if(opening)return;
+    const url=new URL(window.location.href);
+    if(url.searchParams.get('atividade')===id){
+      void perform(async()=>{display(await labRequest<LabActivity>('/api/lab/quizzes/'+id));});
+      return;
+    }
+    url.searchParams.set('atividade',id);
+    window.history.replaceState(null,'',url.pathname+url.search);
+  }
+  function retryQuiz(id:string){void perform(async()=>{
+    const path='/api/lab/quizzes/'+id;
+    try{display(await labRequest<LabActivity>(path+'/generate',{retry:true}));}
+    catch(e){display(await labRequest<LabActivity>(path));throw e;}
+    finally{await refresh().catch(()=>{});}
   });}
   function go(next:number){setIndex(next);setSelection(null);requestAnimationFrame(()=>heading.current?.focus());}
   function saveAnswer(option=selection){if(!activity||option===null)return;void perform(async()=>{
@@ -112,7 +146,7 @@ export function LabView({data,mode}:{data:StudyData;mode:'account'|'demo'}){
     <div className="page-heading"><div><div className="eyebrow">SEU ESPAÇO PARA DESCOBRIR</div><h1>Aprender também é experimentar<span className="heading-dot">.</span></h1><p>Pratique, entenda seus erros e descubra seu próximo passo.</p></div><div className="lab-launch-actions"><button className="button secondary" onClick={newExam} disabled={busy||mode==='demo'}><BookOpen size={17}/>Novo simulado</button><button className="button primary" onClick={newQuiz} disabled={busy||mode==='demo'}><Sparkles size={17}/>Novo quiz</button></div></div>
     {mode==='demo'&&<div className="lab-notice" role="note"><ShieldCheck size={22}/><p><strong>Conheça o Laboratório de Estudos.</strong> Entre na sua conta para gerar quizzes e salvar sua evolução. Nenhuma questão ou estatística fictícia foi incluída.</p><Link href="/login" className="button secondary">Entrar</Link></div>}
     {error&&<div className="lab-error" role="alert"><p>{error}</p><button className="button secondary" disabled={busy} onClick={()=>void perform(refresh)}>Atualizar histórico</button></div>}
-    {loading?<section className="panel lab-loading" role="status"><span className="lab-skeleton"/>Carregando seu aprendizado…</section>:!loaded?<section className="panel lab-empty"><h2>Seus indicadores estão indisponíveis.</h2><p>Atualize o histórico para tentar carregá-los novamente.</p></section>:<>
+    {loading&&!activity?<section className="panel lab-loading" role="status"><span className="lab-skeleton"/>Carregando seu aprendizado…</section>:!loaded&&!activity?<section className="panel lab-empty"><h2>Seus indicadores estão indisponíveis.</h2><p>Atualize o histórico para tentar carregá-los novamente.</p></section>:<>
       <div className="lab-metrics" aria-label="Indicadores de aprendizado">
         {[{icon:Trophy,value:summary.completed,label:'Avaliações concluídas'},{icon:Check,value:summary.answered,label:'Questões respondidas'},{icon:Target,value:summary.completed?`${summary.accuracy}%`:'—',label:'Acertos em avaliações concluídas'},{icon:BookOpen,value:summary.bySubject.length,label:'Disciplinas e assuntos praticados'}].map(({icon:Icon,value,label})=><article className="panel lab-metric" key={label}><Icon size={19}/><strong>{value}</strong><span>{label}</span></article>)}
       </div>
@@ -136,9 +170,9 @@ export function LabView({data,mode}:{data:StudyData;mode:'account'|'demo'}){
         </form>}</section>}
 
       {activity?.mode==='exam'&&<ExamView key={activity.id} activity={activity} data={data} onChange={next=>setActivity(current=>current?.id===next.id?next:current)} onRefresh={refresh} onCompleted={async next=>{display(next);await refresh();if(next.review.state==='idle')await analyze(next.id);}} onExit={closeActivity}/>}
-      {activity&&activity.mode==='quiz'&&<section className="panel lab-runner" aria-label="Atividade de quiz">
+      {activity&&activity.mode==='quiz'&&<section className="panel lab-runner" id="lab-activity-panel" aria-label="Atividade de quiz">
         <div className="lab-section-heading"><div><span className="lab-kicker">{activity.subjectName}</span><h2>{activity.topic}</h2></div><button className="button secondary" disabled={busy} onClick={()=>{setActivity(null);const url=new URL(window.location.href);url.searchParams.delete('atividade');window.history.replaceState(null,'',url.pathname+url.search);}}>Ver laboratório</button></div>
-        {activity.status==='generating'||activity.status==='draft'?<div className="lab-empty" role="status"><Sparkles size={28}/><h3>Suas questões estão sendo preparadas.</h3><p>Buscando o contexto das suas matérias e atividades. O mesmo pedido não gera cobranças duplicadas ao ser recuperado.</p><button className="button secondary" disabled={busy} onClick={()=>open(activity.id)}>Verificar atividade</button></div>:activity.status==='failed'?<div className="lab-empty"><RotateCcw size={28}/><h3>Esta geração não foi concluída.</h3><p>{activity.errorCode==='lab-invalid-generation'?'As questões foram rejeitadas pela validação.':'O provedor não concluiu a geração ou o processamento foi interrompido.'} Nenhuma resposta foi perdida. Uma nova tentativa precisa ser iniciada por você.</p><button className="button primary" disabled={busy} onClick={newQuiz}>Configurar outro quiz</button></div>:<>
+        {activity.status==='generating'||activity.status==='draft'?<div className="lab-empty" role="status"><Sparkles size={28}/><h3>Suas questões estão sendo preparadas.</h3><p>Buscando o contexto das suas matérias e atividades. O mesmo pedido não gera cobranças duplicadas ao ser recuperado.</p><button className="button secondary" disabled={busy||opening} onClick={()=>open(activity.id)}>Verificar atividade</button></div>:activity.status==='failed'?<div className="lab-empty"><RotateCcw size={28}/><h3>Esta geração não foi concluída.</h3><p>{activity.errorCode==='lab-invalid-generation'?'As questões foram rejeitadas pela validação.':'O provedor não concluiu a geração ou o processamento foi interrompido.'} Nenhuma resposta foi perdida. Uma nova tentativa precisa ser iniciada por você.</p>{activity.canRetryGeneration?<button className="button primary" disabled={busy||opening} onClick={()=>retryQuiz(activity.id)}>Tentar gerar novamente</button>:<button className="button primary" disabled={busy} onClick={newQuiz}>Configurar outro quiz</button>}</div>:<>
           {activity.automatic&&<div className="lab-auto-context"><Sparkles size={17}/><span>Preparado pela IA · {activity.count} questões · {activity.alternatives} alternativas · {activity.contextSummary?.taskCount||0} atividades de referência · ordem aleatória</span></div>}
           {activity.status==='completed'&&<div className="lab-result" role="status"><Trophy size={35}/><div><span>ATIVIDADE CONCLUÍDA</span><h3>{activity.score} de {activity.count} acertos <span>· {activity.accuracy}%</span></h3><p>{activity.count-(activity.score||0)} erros · Tempo decorrido: {duration(activity.durationSeconds)}. Revise as explicações abaixo.</p></div></div>}
           <div className="lab-progress-heading"><span>{activity.status==='completed'?'Revisão':'Seu progresso'}</span><strong>{activity.answered}/{activity.count} respondidas</strong></div><progress className="lab-progress" value={activity.answered} max={activity.count} aria-label="Questões respondidas"/>
@@ -161,6 +195,6 @@ export function LabView({data,mode}:{data:StudyData;mode:'account'|'demo'}){
       <section className="panel lab-history" aria-labelledby="lab-history-title"><div className="lab-section-heading"><div><span className="lab-kicker">CONTINUE DE ONDE PAROU</span><h2 id="lab-history-title">Suas atividades</h2></div><button className="text-link" disabled={busy||mode==='demo'} onClick={()=>void perform(refresh)}><RotateCcw size={15}/>Atualizar</button></div>{overview.activities.length?<div className="lab-history-list">{overview.activities.map(item=><button key={item.id} className="lab-history-item" disabled={busy} onClick={()=>open(item.id)}><span className="lab-history-icon"><FlaskConical size={21}/></span><span><strong>{item.topic}</strong><small>{item.subjectName} · {item.count} questões · {date(item.createdAt)}</small></span><span className={`lab-history-status ${item.status}`}>{item.status==='completed'?`${item.score}/${item.count} acertos`:item.status==='ready'?'Continuar':item.status==='generating'?'Preparando':'Não concluída'}</span><ArrowRight size={17}/></button>)}</div>:<div className="lab-empty"><BookOpen size={27}/><h3>Seu histórico começa com uma pergunta.</h3><p>Suas atividades e respostas ficarão disponíveis para continuar e revisar.</p></div>}<p className="lab-caption">Os indicadores consideram todo o histórico das avaliações.</p>{overview.pagination&&<Pagination info={overview.pagination} label="Atividades" disabled={busy} onChange={setHistoryPage}/>}</section>
       <section className="lab-modes" aria-labelledby="lab-modes-title"><h2 id="lab-modes-title">Novas formas de aprender</h2><p>O quiz é o primeiro passo. As modalidades abaixo continuam em planejamento.</p><div>{studyModes.filter(item=>!item.available).map(item=><article key={item.id}><BookOpen size={18}/><strong>{item.label}</strong><span>Em planejamento</span></article>)}</div></section>
     </>}
-    {busy&&<p className="lab-busy" role="status" aria-live="polite">Processando atividade. Aguarde antes de enviar novamente.</p>}
+    {(busy||opening)&&<p className="lab-busy" role="status" aria-live="polite">Processando atividade. Aguarde antes de enviar novamente.</p>}
   </div>;
 }

@@ -1,6 +1,6 @@
 import {createHash,randomInt} from 'node:crypto';
 import {z} from 'zod';
-import {assistedQuizSchema,assistedDocumentSchema,assistedResponseFormat,validateQuizDocument,labReviewSchema,labReviewResponseFormat} from '../lib/lab-schemas.mjs';
+import {assistedQuizSchema,assistedDocumentSchema,assistedResponseFormat,validateQuizDocument,labReviewSchema,labReviewResponseFormat,assistedQuizTitle,retryableQuizErrors} from '../lib/lab-schemas.mjs';
 import {LabError,labModelDocument} from './lab-model.mjs';
 
 const uuid=z.string().uuid();
@@ -47,18 +47,21 @@ export function createAssistedLab(db,{provider,providerName,model,draw=randomInt
       const subjects=await collectLabContext(tx,user,config.prompt,config.subjectId);
       const settings={count:[5,10,15,20][draw(4)],alternatives:[4,5][draw(2)],difficulty:'mixed',correction:'immediate',automatic:true};
       const row=(await tx.query(`INSERT INTO learning_activities(user_id,subject_id,subject_name,request_id,request_hash,topic,config_json,status,provider,model,context_json)
-        VALUES($1,$2,$3,$4,$5,$6,$7,'draft',$8,$9,$10) RETURNING id`,[user.id,config.subjectId||null,subjects.find(s=>s.id===config.subjectId)?.name||'Plano automático',config.requestId,requestHash,config.prompt.slice(0,160),JSON.stringify(settings),providerName,model,JSON.stringify({prompt:config.prompt,subjects,requiredSubjectId:config.subjectId||null})])).rows[0];return row.id;
+        VALUES($1,$2,$3,$4,$5,$6,$7,'draft',$8,$9,$10) RETURNING id`,[user.id,config.subjectId||null,subjects.find(s=>s.id===config.subjectId)?.name||'Plano automático',config.requestId,requestHash,assistedQuizTitle(config.prompt,subjects.find(s=>s.id===config.subjectId)?.name),JSON.stringify(settings),providerName,model,JSON.stringify({prompt:config.prompt,subjects,requiredSubjectId:config.subjectId||null})])).rows[0];return row.id;
     });
     return base.detail(user,id);
   }
   async function generatePrepared(user,id,input){
-    parse(z.object({}).strict(),input);
+    const {retry}=parse(z.object({retry:z.literal(true).optional()}).strict(),input);
     const claim=await db.transaction(async tx=>{
       await tx.query('SELECT id FROM users WHERE id=$1 FOR UPDATE',[user.id]);const row=await owned(tx,user,id);
       if(row.mode!=='quiz')throw new LabError('O simulado exige confirmação da configuração antes da geração.',409,'exam-confirmation-required');
-      if(row.status!=='draft')return {row,reused:true};
+      const canRetry=retry&&row.status==='failed'&&row.config_json.automatic&&!row.config_json.generationRetried&&retryableQuizErrors.has(row.error_code);
+      if(row.status!=='draft'&&!canRetry)return {row,reused:true};
       await quota(tx,user,id);
-      await tx.query("UPDATE learning_activities SET status='generating',generation_started_at=now() WHERE id=$1 AND user_id=$2",[id,user.id]);return {row};
+      const settings=canRetry?{...row.config_json,generationRetried:true}:row.config_json;
+      await tx.query("UPDATE learning_activities SET status='generating',error_code=NULL,generation_started_at=now(),config_json=$3 WHERE id=$1 AND user_id=$2",[id,user.id,JSON.stringify(settings)]);
+      return {row};
     });
     if(claim.reused)return base.detail(user,id);
     const row=claim.row,context=row.context_json,settings={...row.config_json,topic:context.prompt,sourceText:context.subjects.length?'Contexto acadêmico nas disciplinas candidatas.':''};

@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 import {z} from 'zod';
-import {quizConfigSchema,quizAnswerSchema,validateQuizDocument,quizResponseFormat} from '../lib/lab-schemas.mjs';
+import {quizConfigSchema,quizAnswerSchema,validateQuizDocument,quizResponseFormat,assistedQuizTitle,retryableQuizErrors} from '../lib/lab-schemas.mjs';
 import {LabError,labModelDocument} from './lab-model.mjs';
 import {createAssistedLab} from './lab-assisted.mjs';
 import {createExamService} from './lab-exams.mjs';
@@ -12,7 +12,7 @@ const fingerprint=value=>createHash('sha256').update(JSON.stringify(value)).dige
 const percentage=(correct,total)=>total?Math.round(correct/total*1000)/10:0;
 
 function brief(row){return {
-  id:row.id,mode:row.mode,status:row.status,subjectId:row.subject_id,subjectName:row.subject_name,topic:row.topic,
+  id:row.id,mode:row.mode,status:row.status,subjectId:row.subject_id,subjectName:row.subject_name,topic:row.mode==='quiz'&&row.config_json.automatic&&!row.started_at&&row.topic!=='Quiz de revisão'&&!row.topic.startsWith('Quiz · ')?assistedQuizTitle(row.topic,row.subject_name):row.topic,
   count:row.config_json.count,correction:row.config_json.correction,difficulty:row.config_json.difficulty,
   alternatives:row.config_json.alternatives,score:row.score,durationSeconds:row.duration_seconds,
   automatic:row.config_json.automatic===true,
@@ -20,7 +20,7 @@ function brief(row){return {
 };}
 function publicActivity(row,answers){
   const complete=row.status==='completed';
-  return {...brief(row),errorCode:row.error_code,sourceText:row.source_text,
+  return {...brief(row),errorCode:row.error_code,canRetryGeneration:row.mode==='quiz'&&row.status==='failed'&&row.config_json.automatic===true&&!row.config_json.generationRetried&&retryableQuizErrors.has(row.error_code),sourceText:row.source_text,
     ...(row.mode==='exam'?{exam:{durationMinutes:row.config_json.durationMinutes,reviewEnabled:row.config_json.reviewEnabled,reviewMarks:row.review_marks,markRevision:row.mark_revision,selectionReason:row.context_json.selectionReason,expiresAt:iso(row.expires_at),serverTime:new Date().toISOString(),results:complete?row.result_json:null}}:{}),
     review:{state:row.review_state||'idle',content:row.review_json||null,attempts:row.review_attempts||0,errorCode:row.review_error_code||null},
     contextSummary:row.config_json.automatic?{prompt:row.context_json.prompt,taskCount:row.context_json.subjects?.find(s=>s.id===row.subject_id)?.tasks.length||0}:null,
