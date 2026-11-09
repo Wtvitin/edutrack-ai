@@ -31,6 +31,23 @@ export function createMailer(db, config, dependencies = {}) {
       } else if (mailMode === 'smtp' && smtp) {
         const result = await smtp.sendMail({ from: env.MAIL_FROM, to, subject, text: `${body}\n\n${link}` });
         if (Array.isArray(result?.accepted) && !result.accepted.length) throw new Error('No recipient accepted.');
+      } else if (mailMode === 'brevo' && env.BREVO_API_KEY && env.BREVO_SENDER_EMAIL && typeof fetchImpl === 'function') {
+        const textContent = `${body}\n\n${link}`;
+        const htmlContent = textContent.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('\n', '<br>');
+        const response = await fetchImpl('https://api.brevo.com/v3/smtp/email', {
+          method: 'POST',
+          headers: { 'api-key': env.BREVO_API_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sender: { name: 'EduTrack AI', email: env.BREVO_SENDER_EMAIL },
+            to: [{ email: to }], subject, textContent, htmlContent: `<p>${htmlContent}</p>`,
+          }),
+          signal: AbortSignal.timeout(12000),
+        });
+        if (!response.ok) {
+          const failure = new Error('Brevo rejected mail delivery.');
+          failure.code = `brevo-http-${response.status}`;
+          throw failure;
+        }
       } else if (mailMode === 'resend' && env.RESEND_API_KEY && env.MAIL_FROM && typeof fetchImpl === 'function') {
         const response = await fetchImpl('https://api.resend.com/emails', {
           method: 'POST',
