@@ -1,13 +1,12 @@
 import { z } from 'zod';
+import {writableToolValues,chartTypeValues,chartSourceValues} from '../lib/agent-response-schemas.mjs';
+export {chartSpecificationSchema,textResponseSchema,analysisResponseSchema,actionResponseSchema,structuredResponseSchema} from '../lib/agent-response-schemas.mjs';
 
 const uuid = z.string().uuid();
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 const taskStatusValues = ['TODO', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'];
 const priorityValues = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'];
 const difficultyValues = ['EASY', 'MEDIUM', 'HARD'];
-const writableToolValues = ['create_task', 'update_task', 'complete_task'];
-const chartTypeValues = ['kpi', 'card', 'table', 'line', 'bar', 'area', 'donut', 'pie', 'scatter', 'comparison', 'heatmap'];
-const chartSourceValues = ['get_general_dashboard', 'get_academic_performance', 'get_study_trends'];
 
 const validDate = value => {
   if (!datePattern.test(value)) return false;
@@ -49,6 +48,10 @@ export const toolArgumentSchemas = Object.freeze({
   get_academic_performance: emptySchema,
   get_study_trends: emptySchema,
   get_general_dashboard: emptySchema,
+  prepare_study_quiz: z.object({prompt:z.string().trim().min(3).max(1000),subjectId:uuid.nullable().optional()}).strict(),
+  prepare_study_flashcards: z.object({prompt:z.string().trim().min(3).max(1000),subjectId:uuid.nullable().optional(),fromErrors:z.boolean().optional()}).strict(),
+  get_review_schedule: z.object({}).strict(),
+  prepare_study_exam: z.object({prompt:z.string().trim().min(3).max(1000),subjectId:uuid.nullable().optional()}).strict(),
 });
 
 const toolJson = (required, properties) => ({ type: 'object', additionalProperties: false, required, properties });
@@ -64,30 +67,15 @@ export const toolDefinitions = Object.freeze([
   { name: 'get_academic_performance', description: 'Get academic performance metrics for the authenticated user.', risk: 'read', parameters: toolJson([], {}) },
   { name: 'get_study_trends', description: 'Get study time trends and subject distribution for the authenticated user.', risk: 'read', parameters: toolJson([], {}) },
   { name: 'get_general_dashboard', description: 'Get dashboard aggregates for the authenticated user.', risk: 'read', parameters: toolJson([], {}) },
+  {name:'prepare_study_flashcards',description:'Prepare an owned flashcard draft and navigate to the Laboratory. No generation until student confirms. Can use concepts missed in completed assessments with fromErrors=true; never treat old AI keys as verified facts.',risk:'write',parameters:toolJson(['prompt'],{prompt:{type:'string',minLength:3,maxLength:1000},subjectId:{type:['string','null'],format:'uuid'},fromErrors:{type:'boolean'}})},
+  {name:'get_review_schedule',description:'Read persisted flashcard due counts and concepts for today. Self-assessments are not measurements of retention. No generation or mutation.',risk:'read',parameters:toolJson([],{})},
+  { name: 'prepare_study_exam', description: 'Prepare a simulated exam configuration (30 mixed questions, unlimited time, review marks enabled, correction after submission). Suggest a subject from authorized data. No generation before student confirmation in the Laboratory. Never answer or submit exams.', risk: 'write', parameters: toolJson(['prompt'],{prompt:{type:'string',minLength:3,maxLength:1000},subjectId:{type:['string','null'],format:'uuid'}}) },
+  { name: 'prepare_study_quiz', description: 'When the student requests a quiz or practice exam, prepare an authorized Study Laboratory activity from their subjects and assignments. The Laboratory generates the questions after navigation; never create academic tasks for this request.', risk: 'write', parameters: toolJson(['prompt'], {prompt:{type:'string',minLength:3,maxLength:1000},subjectId:{type:['string','null'],format:'uuid'}}) },
 ].map(definition => ({ ...definition, type: 'function', function: { name: definition.name, description: definition.description, parameters: definition.parameters } })));
 
-const chartAxisSchema = z.object({ field: z.string().trim().min(1).max(80), label: z.string().trim().min(1).max(100) }).strict();
-export const chartSpecificationSchema = z.object({
-  type: z.enum(chartTypeValues),
-  title: z.string().trim().min(1).max(200),
-  description: z.string().max(500).optional(),
-  xAxis: chartAxisSchema,
-  yAxis: chartAxisSchema,
-  series: z.array(z.object({ field: z.string().trim().min(1).max(80), label: z.string().trim().min(1).max(100) }).strict()).min(1).max(8),
-  data: z.array(z.record(z.unknown())).max(500),
-  filters: z.array(z.record(z.unknown())).max(30).optional(),
-  source: z.object({ tool: z.enum(chartSourceValues) }).strict(),
-  datasetVersion: z.string().trim().min(1).max(40),
-}).strict();
-
-const metadataSchema = z.record(z.unknown()).optional();
-export const textResponseSchema = z.object({ type: z.literal('text'), content: z.string().min(1), metadata: metadataSchema }).strict();
-export const analysisResponseSchema = z.object({ type: z.literal('analysis'), analysis: z.string().min(1), metrics: z.record(z.unknown()), chart: chartSpecificationSchema.optional(), metadata: metadataSchema }).strict();
-export const actionResponseSchema = z.object({ type: z.literal('action'), action: z.enum(writableToolValues), result: z.record(z.unknown()), metadata: metadataSchema }).strict();
-export const structuredResponseSchema = z.discriminatedUnion('type', [textResponseSchema, analysisResponseSchema, actionResponseSchema]);
 
 export const agentChatInputSchema = z.object({ message: z.string().trim().min(1).max(12000), conversationId: uuid.optional() }).strict();
-export const toolCallSchema = z.object({ id: z.string().min(1).max(200), name: z.string().min(1).max(100), arguments: z.record(z.unknown()) }).strict();
+export const toolCallSchema = z.object({ id: z.string().min(1).max(200), name: z.string().min(1).max(100), arguments: z.record(z.string(), z.unknown()) }).strict();
 
 export const responseJsonSchemas = Object.freeze({
   text: { type: 'object', additionalProperties: false, required: ['type', 'content'], properties: { type: { const: 'text' }, content: { type: 'string', minLength: 1 }, metadata: { type: 'object', additionalProperties: true } } },

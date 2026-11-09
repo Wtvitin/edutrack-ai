@@ -1,5 +1,6 @@
 import { z } from "zod";
-const date=z.string().refine(v=>v===""||(/^\d{4}-\d{2}-\d{2}$/.test(v)&&!Number.isNaN(Date.parse(`${v}T12:00:00`))),"Invalid date");
+import {validCalendarDay} from './calendar-date.mjs';
+const date=z.string().refine(validCalendarDay,"Invalid date");
 export const studyDataSchema=z.object({
  version:z.literal(1),
  profile:z.object({name:z.string().trim().min(1).max(80),goal:z.string().max(300),weeklyGoalMinutes:z.number().int().min(0).max(10080).optional(),id:z.string().optional(),email:z.string().optional(),notificationsEnabled:z.boolean().optional(),theme:z.enum(["system","light","dark"]).optional()}),

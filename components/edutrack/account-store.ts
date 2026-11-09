@@ -1,12 +1,12 @@
 "use client";
+import {requestJson} from '../../lib/http-json.mjs';
 import {useEffect,useRef,useState,useCallback,type Dispatch,type SetStateAction} from 'react';
 import {toast} from 'sonner'; import {navigateTo} from './navigation';
 import {seedData,type StudyData} from '@/lib/edutrack';
 import {studyDataSchema} from '@/lib/edutrack-schema';
 declare global {interface Window {edutrackFlush?:()=>Promise<void>}}
 export async function api<T=Record<string,unknown>>(path:string,data?:unknown,method=data?'POST':'GET'):Promise<T>{
-  const response=await fetch(`/api${path}`,{method,credentials:'same-origin',headers:{'Content-Type':'application/json'},body:data===undefined?undefined:JSON.stringify(data)});
-  const result=await response.json() as T&{message?:string};if(!response.ok)throw new Error(result.message||'Não foi possível concluir.');return result;
+  return requestJson(`/api${path}`,data,method) as Promise<T>;
 }
 export function useStudyStore(enabled:boolean,forceDemo=false){
   const [data,setSnapshot]=useState<StudyData>(()=>seedData());const [ready,setReady]=useState(false);const [mode,setMode]=useState<'account'|'demo'>('demo');const [saving,setSaving]=useState(false);

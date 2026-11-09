@@ -1,0 +1,1 @@
+export function listenHost(origin,nodeEnv){const url=new URL(origin);if(url.username||url.password||url.pathname!=='/'||url.search||url.hash)throw new Error('APP_ORIGIN must be a public origin without credentials, path or query.');return nodeEnv!=='production'&&['localhost','127.0.0.1'].includes(url.hostname)?'127.0.0.1':'0.0.0.0';}

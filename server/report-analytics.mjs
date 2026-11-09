@@ -24,7 +24,7 @@ function commandCandidates(configured) {
 
 function probePython(command) {
   return new Promise(resolve => {
-    const child = spawn(command.file, [...command.args, '-c', 'import pandas; print(pandas.__version__)'], {cwd: projectRoot, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe']});
+    const child = spawn(command.file, [...command.args, '-c', 'import pandas; print(pandas.__version__)'], {cwd: projectRoot, windowsHide: true, timeout:15000, stdio: ['ignore', 'pipe', 'pipe']});
     let stdout = '', stderr = '';
     child.stdout.on('data', chunk => {stdout += chunk;});
     child.stderr.on('data', chunk => {stderr += chunk;});

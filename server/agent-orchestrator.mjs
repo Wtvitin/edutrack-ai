@@ -19,6 +19,7 @@ function parseStoredMessage(row) {
   if (row.role === 'ASSISTANT') {
     try {
       const value = JSON.parse(row.content);
+      if (value?.geminiContent?.role === 'model' && Array.isArray(value.geminiContent.parts)) return { role: 'assistant', content: value.content || null, ...(Array.isArray(value.toolCalls) ? { tool_calls: value.toolCalls } : {}), geminiContent: value.geminiContent };
       if (value && typeof value === 'object' && Array.isArray(value.toolCalls)) return { role: 'assistant', content: value.content || null, tool_calls: value.toolCalls };
     } catch {}
     return { role: 'assistant', content: row.content };
@@ -37,7 +38,16 @@ function parseStoredMessage(row) {
 async function loadConversation(db, conversationId, userId, limit) {
   const conversation = (await db.query('SELECT id,user_id FROM ai_conversations WHERE id=$1 AND user_id=$2', [conversationId, userId])).rows[0];
   if (!conversation) throw new AgentError('Conversa não encontrada.', 404, 'conversation-not-found');
-  const rows = (await db.query('SELECT role,content FROM ai_messages WHERE conversation_id=$1 ORDER BY created_at ASC,id ASC LIMIT $2', [conversationId, limit])).rows;
+  // Select the newest messages, then restore chronological order for the model.
+  let rows = (await db.query('SELECT id,created_at::text AS history_time,role,content FROM ai_messages WHERE conversation_id=$1 ORDER BY created_at DESC,id DESC LIMIT $2', [conversationId, limit])).rows
+    .reverse();
+  if (rows.length && rows[0].role !== 'USER') {
+    // maxHistory is a target, not permission to split a Tool exchange. Extend
+    // only to the user turn that owns the oldest selected message.
+    const boundary = (await db.query("SELECT id,created_at::text AS history_time FROM ai_messages WHERE conversation_id=$1 AND role='USER' AND (created_at,id)<=($2,$3::uuid) ORDER BY created_at DESC,id DESC LIMIT 1", [conversationId, rows[0].history_time, rows[0].id])).rows[0];
+    if (boundary) rows = (await db.query('SELECT role,content FROM ai_messages WHERE conversation_id=$1 AND (created_at,id)>=($2,$3::uuid) ORDER BY created_at,id', [conversationId, boundary.history_time, boundary.id])).rows;
+    else rows = [];
+  }
   return { conversation, messages: rows.map(parseStoredMessage) };
 }
 
@@ -92,6 +102,7 @@ function completeAnalysisFromTools(content, toolOutputs) {
   if (typeof content !== 'string') return content;
   let value;
   try { value = JSON.parse(content); } catch { return content; }
+  if (value?.type === 'action' && toolOutputs.has(value.action)) return JSON.stringify({ ...value, result: redact(toolOutputs.get(value.action)) });
   const trends = toolOutputs.get('get_study_trends');
   if (!trends || value?.type !== 'analysis') return content;
   const data = [
@@ -118,7 +129,7 @@ function finalToolType(current, definition) {
   return definition?.risk === 'write' || current === 'action' ? 'action' : 'analysis';
 }
 
-export async function chatWithAgent({ db, user, message, conversationId, config = readAgentConfig(), provider, tools } = {}) {
+async function runAgentTurn({ db, user, message, conversationId, config = readAgentConfig(), provider, tools } = {}) {
   const input = agentChatInputSchema.safeParse({ message, conversationId });
   if (!input.success) throw new AgentError('Mensagem inválida.', 400, 'invalid-message', input.error);
   const agentProvider = provider || createAgentProvider(config);
@@ -133,13 +144,15 @@ export async function chatWithAgent({ db, user, message, conversationId, config 
   }
   await persistMessage(db, currentConversationId, 'USER', input.data.message);
   const subjects = (await db.query('SELECT id,name FROM subjects WHERE user_id=$1 ORDER BY created_at,id', [user.id])).rows;
-  const messages = [{ role: 'system', content: buildSystemPrompt({ subjects }) }, ...history, { role: 'user', content: input.data.message }];
+  const messages = [{ role: 'system', content: buildSystemPrompt({ subjects })+(registry.has('prepare_study_flashcards')?'\nPara flashcards ou revisão dos erros, use prepare_study_flashcards. O estudante confirma a geração no Laboratório; você só prepara o rascunho. Para o que revisar hoje, consulte get_review_schedule, sem gerar conteúdo. Autoavaliações não comprovam retenção. Nunca invente fontes nem reaproveite gabaritos antigos como fatos confirmados.':'')+(registry.has('prepare_study_quiz')?'\nPara um quiz interativo solicitado pelo estudante, use prepare_study_quiz com o pedido e a disciplina correspondente, se identificada. Não crie tarefas acadêmicas para esse pedido.':'')+(registry.has('prepare_study_exam')?'\nPara simulado ou prova, use prepare_study_exam. Para matéria que mais precisa revisar, deixe subjectId ausente e o backend fará a sugestão. O padrão tem 30 questões mistas, sem limite, revisão e correção após entrega. O estudante deve confirmar a configuração no Laboratório antes da geração. Você não pode responder, marcar alternativas, entregar provas ou modificar notas.':'') }, ...history, { role: 'user', content: input.data.message }];
   const executedToolNames = new Set();
   const executedCallKeys = new Set();
   const toolOutputs = new Map();
   let expectedType;
   let iterations = 0;
   let toolCallCount = 0;
+  let actionsApplied = false;
+  try {
   while (iterations < config.maxIterations) {
     iterations += 1;
     const result = await agentProvider.complete({
@@ -151,14 +164,25 @@ export async function chatWithAgent({ db, user, message, conversationId, config 
       maxTokens: 1600,
     });
     const calls = Array.isArray(result.toolCalls) ? result.toolCalls : [];
+    const finalizing = !!expectedType;
     if (!calls.length) {
-      const response = parseResponse(completeAnalysisFromTools(result.content, toolOutputs), expectedType, executedToolNames);
-      await persistMessage(db, currentConversationId, 'ASSISTANT', JSON.stringify(response));
+      let response;
+      try {
+        response = parseResponse(completeAnalysisFromTools(result.content, toolOutputs), expectedType, executedToolNames);
+      } catch (error) {
+        if (!expectedType || iterations >= config.maxIterations || !['invalid-structured-output','invalid-analysis','invalid-action','invalid-chart-source'].includes(error.code)) throw error;
+        // Repair only the final representation; Tools stay disabled and no
+        // domain action is replayed. Never retry a safety/provider rejection.
+        messages.push({ role: 'assistant', content: result.content || null, ...(result.geminiContent ? { geminiContent: result.geminiContent } : {}) });
+        messages.push({ role: 'system', content: 'A resposta final anterior não passou na validação. Reescreva somente o JSON conforme o contrato solicitado, usando os resultados existentes. Não chame ferramentas e não repita ações.' });
+        continue;
+      }
+      await persistMessage(db, currentConversationId, 'ASSISTANT', JSON.stringify(result.geminiContent ? { content: JSON.stringify(response), geminiContent: result.geminiContent } : response));
       await db.query('UPDATE ai_conversations SET updated_at=now() WHERE id=$1 AND user_id=$2', [currentConversationId, user.id]);
       return { conversationId: currentConversationId, response, metadata: { model: result.model || config.model, iterations, toolCalls: toolCallCount } };
     }
-    const assistantCallMessage = { content: result.content, toolCalls: calls.map(call => ({ id: call.id, name: call.name, arguments: redact(call.arguments), ...(typeof call.thoughtSignature === 'string' ? { thoughtSignature: call.thoughtSignature } : {}) })) };
-    messages.push({ role: 'assistant', content: result.content || null, tool_calls: calls });
+    const assistantCallMessage = { content: result.content, toolCalls: calls.map(call => ({ id: call.id, name: call.name, arguments: redact(call.arguments), ...(typeof call.thoughtSignature === 'string' ? { thoughtSignature: call.thoughtSignature } : {}) })), ...(result.geminiContent ? { geminiContent: result.geminiContent } : {}) };
+    messages.push({ role: 'assistant', content: result.content || null, tool_calls: calls, ...(result.geminiContent ? { geminiContent: result.geminiContent } : {}) });
     await persistMessage(db, currentConversationId, 'ASSISTANT', JSON.stringify(assistantCallMessage));
     for (const rawCall of calls) {
       toolCallCount += 1;
@@ -167,17 +191,19 @@ export async function chatWithAgent({ db, user, message, conversationId, config 
       const callId = typeof rawCall?.id === 'string' ? rawCall.id : randomUUID();
       const definition = registry.get(name);
       const executionId = randomUUID();
-      const key = `${callId}:${name}:${JSON.stringify(rawCall?.arguments || {})}`;
+      const key = callId;
       await db.query('INSERT INTO ai_tool_executions(id,user_id,conversation_id,intent,tool_name,input_json,status,model,provider,prompt_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)', [executionId, user.id, currentConversationId, definition?.risk || 'unknown', name, boundedJson(rawCall?.arguments || {}, config.maxToolResultLength), 'PENDING', result.model || config.model, config.provider, config.promptVersion]);
       let output;
       let failure;
       try {
         if (!callParsed.success) throw new AgentError('Tool Call malformada.', 400, 'invalid-tool-call', callParsed.error);
+        if (finalizing && definition?.risk === 'write') throw new AgentError('Uma nova ação durante a resposta final foi rejeitada.', 400, 'unexpected-tool-call');
         if (executedCallKeys.has(key)) throw new AgentError('Tool Call duplicada rejeitada.', 400, 'duplicate-tool-call');
         executedCallKeys.add(key);
         const validation = registry.validate(name, callParsed.data.arguments);
         if (!validation.success) throw validation.error;
         output = await registry.execute(name, validation.data, { db, user, executionId, conversationId: currentConversationId, config });
+        if (definition?.risk === 'write') actionsApplied = true;
         executedToolNames.add(name);
         expectedType = finalToolType(expectedType, definition);
         await db.query('UPDATE ai_tool_executions SET output_json=$2,status=$3,completed_at=now() WHERE id=$1 AND user_id=$4', [executionId, boundedJson(output, config.maxToolResultLength), 'SUCCESS', user.id]);
@@ -192,4 +218,21 @@ export async function chatWithAgent({ db, user, message, conversationId, config 
     }
   }
   throw new AgentError('O Agent atingiu o limite de iterações.', 503, 'iteration-limit');
+  } catch (error) {
+    const failure=error instanceof AgentError?error:new AgentError('Não foi possível concluir a resposta do assistente.',503,'agent-error',error);
+    failure.conversationId=currentConversationId;failure.actionsApplied=actionsApplied;
+    throw failure;
+  }
+}
+
+// A persisted lease rejects simultaneous turns before storing a second user
+// message. No database transaction is held while waiting on a provider.
+export async function chatWithAgent(options={}){
+  const checked=agentChatInputSchema.safeParse({message:options.message,conversationId:options.conversationId});
+  if(!checked.success)throw new AgentError('Mensagem inválida.',400,'invalid-message');
+  const {db,user}=options,conversationId=checked.data.conversationId||await createConversation(db,user.id,checked.data.message),turn=randomUUID();
+  const claim=await db.query("UPDATE ai_conversations SET active_turn=$3,active_turn_started_at=now() WHERE id=$1 AND user_id=$2 AND (active_turn IS NULL OR active_turn_started_at<now()-interval '15 minutes') RETURNING id",[conversationId,user.id,turn]);
+  if(!claim.rows.length){const owned=(await db.query('SELECT id FROM ai_conversations WHERE id=$1 AND user_id=$2',[conversationId,user.id])).rows[0];const error=new AgentError(owned?'Uma resposta já está sendo preparada nesta conversa. Aguarde antes de enviar outra mensagem.':'Conversa não encontrada.',owned?409:404,owned?'conversation-busy':'conversation-not-found');error.conversationId=conversationId;throw error;}
+  try{return await runAgentTurn({...options,conversationId});}
+  finally{try{await db.query('UPDATE ai_conversations SET active_turn=NULL,active_turn_started_at=NULL WHERE id=$1 AND user_id=$2 AND active_turn=$3',[conversationId,user.id,turn]);}catch{console.error('Agent turn lease could not be released.');}}
 }

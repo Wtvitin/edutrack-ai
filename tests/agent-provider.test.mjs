@@ -70,7 +70,7 @@ test('Gemini adapta schema JSON das Tools ao formato aceito pelo endpoint', asyn
   const provider = createAgentProvider(config({ provider: 'google-gemini', apiKey: 'gemini-key', baseUrl: 'https://gemini.test/models' }), transport);
   await provider.complete({ model: 'gemini-model', messages: [{ role: 'user', content: 'tarefa' }], tools: [{ name: 'create_task', description: 'cria', parameters: { type: 'object', additionalProperties: false, properties: { dueDate: { type: ['string', 'null'] } } } }] });
   assert.equal(request.tools[0].functionDeclarations[0].parameters.additionalProperties, undefined);
-  assert.deepEqual(request.tools[0].functionDeclarations[0].parameters.properties.dueDate, { type: 'string' });
+  assert.deepEqual(request.tools[0].functionDeclarations[0].parameters.properties.dueDate, { type: 'string', nullable: true });
 });
 
 test('Gemini envia Structured Output sem usar OpenRouter', async () => {
@@ -80,19 +80,20 @@ test('Gemini envia Structured Output sem usar OpenRouter', async () => {
   await provider.complete({ model: 'gemini-model', messages: [{ role: 'user', content: 'oi' }], responseFormat: { name: 'agent_response', schema: { type: 'object', properties: { type: { type: 'string' } }, required: ['type'] } } });
   assert.equal(requests.length, 1);
   assert.equal(requests[0].body.generationConfig.responseMimeType, 'application/json');
-  assert.deepEqual(requests[0].body.generationConfig.responseSchema, { type: 'object', properties: { type: { type: 'string' } }, required: ['type'] });
+  assert.deepEqual(requests[0].body.generationConfig.responseJsonSchema, { type: 'object', properties: { type: { type: 'string' } }, required: ['type'] });
   assert.doesNotMatch(requests[0].url, /openrouter/);
 });
 
-test('Gemini remove campos JSON Schema não suportados no Structured Output', async () => {
+test('Gemini mantém objetos abertos no campo JSON Schema correto sem remover limites suportados', async () => {
   let request;
   const transport = { async post(url, headers, body) { request = body; return { status: 200, body: { candidates: [{ content: { parts: [{ text: '{"type":"analysis"}' }] } }] } }; } };
   const provider = createAgentProvider(config({ provider: 'google-gemini', apiKey: 'gemini-key', baseUrl: 'https://gemini.test/models' }), transport);
   await provider.complete({ model: 'gemini-model', messages: [{ role: 'user', content: 'oi' }], responseFormat: { name: 'agent_analysis_response_v1', schema: { type: 'object', additionalProperties: false, properties: { metadata: { type: 'object', additionalProperties: true }, count: { type: 'integer', minimum: 1, maximum: 500 }, items: { type: 'array', minItems: 1, maxItems: 500, items: { type: 'string' } } } } } });
-  assert.equal(request.generationConfig.responseSchema.additionalProperties, undefined);
-  assert.equal(request.generationConfig.responseSchema.properties.metadata.additionalProperties, undefined);
-  assert.deepEqual(request.generationConfig.responseSchema.properties.count, { type: 'integer' });
-  assert.deepEqual(request.generationConfig.responseSchema.properties.items, { type: 'array', items: { type: 'string' } });
+  assert.equal(request.generationConfig.responseSchema, undefined);
+  assert.equal(request.generationConfig.responseJsonSchema.additionalProperties, false);
+  assert.equal(request.generationConfig.responseJsonSchema.properties.metadata.additionalProperties, true);
+  assert.deepEqual(request.generationConfig.responseJsonSchema.properties.count, { type: 'integer', minimum: 1, maximum: 500 });
+  assert.deepEqual(request.generationConfig.responseJsonSchema.properties.items, { type: 'array', minItems: 1, maxItems: 500, items: { type: 'string' } });
 });
 
 test('falha Gemini não chama fallback OpenRouter', async () => {

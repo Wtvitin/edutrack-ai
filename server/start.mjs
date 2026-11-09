@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { openDatabase } from './database.mjs';
 import { createAPI } from './api.mjs';
+import {listenHost} from './runtime-host.mjs';
 import {connectUpgradeSockets} from './proxy-upgrade.mjs';
 if(existsSync('.env.local'))process.loadEnvFile('.env.local');
 if(existsSync('.env.classroom.local'))process.loadEnvFile('.env.classroom.local');
@@ -16,11 +17,13 @@ if(!['local','smtp','resend'].includes(mailMode))throw new Error('MAIL_MODE must
 const smtpPort=Number(process.env.SMTP_PORT||587);
 if(mailMode==='smtp'&&(!process.env.SMTP_HOST||!Number.isInteger(smtpPort)||smtpPort<1||smtpPort>65535||!process.env.SMTP_USER||!process.env.SMTP_PASSWORD||!process.env.MAIL_FROM))throw new Error('Configure SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD and MAIL_FROM in .env.local.');
 if(mailMode==='resend'&&(!process.env.RESEND_API_KEY||!process.env.MAIL_FROM))throw new Error('Configure RESEND_API_KEY and MAIL_FROM in .env.local.');
+const host=listenHost(origin,process.env.NODE_ENV);
 const db=await openDatabase();const api=createAPI(db,{origin,local,mailMode,env:process.env});
 const command=process.argv.includes('--dev')?'dev':'start';
 process.env.NEXT_TELEMETRY_DISABLED ??= '1';
 const child=spawn(process.execPath,[fileURLToPath(new URL('../node_modules/next/dist/bin/next',import.meta.url)),command,'--port',String(uiPort),'--hostname','127.0.0.1'],{stdio:'inherit',windowsHide:true});
 const server=createServer(async(req,res)=>{
+  res.setHeader('Referrer-Policy','no-referrer');
   if(await api(req,res))return;
   const proxy=request({hostname:'127.0.0.1',port:uiPort,path:req.url,method:req.method,headers:req.headers},response=>{res.writeHead(response.statusCode,response.headers);response.pipe(res);});
   req.on('error',()=>proxy.destroy());res.on('close',()=>proxy.destroy());
@@ -31,6 +34,6 @@ server.on('upgrade',(req,socket,head)=>{
   socket.on('error',()=>proxy.destroy());socket.on('close',()=>proxy.destroy());
   proxy.on('upgrade',(response,upstream,buffer)=>connectUpgradeSockets(socket,upstream,head,buffer,response.headers));proxy.on('error',()=>socket.destroy());proxy.end();
 });
-server.listen(port,'127.0.0.1',()=>console.log(`EduTrack: ${origin} | e-mails: ${mailMode} | sem Docker`));
+server.listen(port,host,()=>console.log(`EduTrack: ${origin} | e-mails: ${mailMode} | sem Docker`));
 async function close(){server.close();child.kill();await db.close();process.exit();}
 process.on('SIGINT',close);process.on('SIGTERM',close);child.on('exit',code=>{if(code)console.error('Frontend exited:',code);void close();});

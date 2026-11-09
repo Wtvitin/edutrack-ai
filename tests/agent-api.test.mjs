@@ -105,3 +105,25 @@ test('API registra diagnóstico seguro do Provider sem expor a chave', async () 
     await new Promise(resolve => setupResult.server.close(resolve));
   }
 });
+
+test('API distinguishes safety blocks, keeps conversation and never logs upstream secrets',async()=>{
+  const logs=[],original=console.error;console.error=(...args)=>logs.push(args);
+  const ctx=await setup({async complete(){const failure=new AgentError('Solicitação bloqueada por segurança.',422,'provider-safety-blocked');failure.providerStatus=200;failure.providerMessage='private-prompt do-not-log-key';failure.providerCode='SAFETY';throw failure;}});
+  try{
+    const cookie=await ctx.login('safety-api@example.test','Safety');
+    const result=await ctx.call('/api/ai/chat',{message:'fake'},cookie);
+    assert.equal(result.status,422);assert.equal(result.body.code,'provider-safety-blocked');assert.ok(result.body.conversationId);assert.equal(result.body.actionsApplied,false);
+    assert.doesNotMatch(JSON.stringify(logs)+JSON.stringify(result.body),/private-prompt|do-not-log-key/);
+  }finally{console.error=original;await new Promise(resolve=>ctx.server.close(resolve));await ctx.db.close();}
+});
+
+test('API warns when final generation fails after a committed write and returns its conversation',async()=>{
+  let calls=0,subjectId;
+  const ctx=await setup({async complete(){calls++;if(calls===1)return {toolCalls:[{id:'one-create',name:'create_task',arguments:{subjectId,title:'Write once'}}]};throw new AgentError('Tempo excedido.',504,'provider-timeout');}});
+  try{
+    const cookie=await ctx.login('applied-api@example.test','Applied');subjectId=(await ctx.call('/api/data',undefined,cookie)).body.data.subjects[0].id;
+    const result=await ctx.call('/api/ai/chat',{message:'Crie uma tarefa'},cookie);
+    assert.equal(result.status,504);assert.equal(result.body.actionsApplied,true);assert.ok(result.body.conversationId);assert.match(result.body.message,/já foi aplicada/);
+    assert.equal((await ctx.call('/api/data',undefined,cookie)).body.data.tasks.length,1);assert.equal(calls,2);
+  }finally{await new Promise(resolve=>ctx.server.close(resolve));await ctx.db.close();}
+});

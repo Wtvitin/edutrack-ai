@@ -32,8 +32,17 @@ export function createMailer(db, config, dependencies = {}) {
         const result = await smtp.sendMail({ from: env.MAIL_FROM, to, subject, text: `${body}\n\n${link}` });
         if (Array.isArray(result?.accepted) && !result.accepted.length) throw new Error('No recipient accepted.');
       } else if (mailMode === 'resend' && env.RESEND_API_KEY && env.MAIL_FROM && typeof fetchImpl === 'function') {
-        const response = await fetchImpl('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ from: env.MAIL_FROM, to: [to], subject, text: `${body}\n\n${link}` }) });
-        if (!response.ok) throw new Error('Mail delivery failed.');
+        const response = await fetchImpl('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ from: env.MAIL_FROM, to: [to], subject, text: `${body}\n\n${link}` }),
+          signal: AbortSignal.timeout(12000),
+        });
+        if (!response.ok) {
+          const failure = new Error('Resend rejected mail delivery.');
+          failure.code = `resend-http-${response.status}`;
+          throw failure;
+        }
       } else {
         throw new MailError('O serviço de e-mail não está configurado.', { code: 'mail-not-configured', mailMode, recipientDomain });
       }

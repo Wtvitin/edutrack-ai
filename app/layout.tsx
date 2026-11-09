@@ -5,6 +5,9 @@ import "./account-improvements.css";
 import "./study-experience.css";
 import "./integrations.css";
 import "./deadline-reminders.css";
+import "./study-lab.css";
+import "./study-exams.css";
+import "./flashcards.css";
 import { ThemeProvider } from "@/components/edutrack/theme";
 
 export const metadata: Metadata = {

@@ -1,3 +1,4 @@
+import {createReportCache} from './report-cache.mjs';
 import { z } from 'zod';
 import { token,digest,hashPassword,checkPassword,sessionCookie,readSessionCookie } from './security.mjs';
 import { createMailer } from './mail.mjs';
@@ -9,7 +10,11 @@ import { agentChatInputSchema } from './agent-schemas.mjs';
 import { createAgentProvider } from './agent-provider.mjs';
 import { createAgentToolRegistry } from './agent-tools.mjs';
 import { chatWithAgent } from './agent-orchestrator.mjs';
+import {agentErrorMessage} from '../lib/agent-errors.mjs';
 import {CLASSROOM_CALLBACK,readClassroomConfig,createClassroomService} from './classroom.mjs';
+import {createRuntimeMetrics,instrumentProvider,metricOperation} from './runtime-metrics.mjs';
+import {createFlashcards} from './flashcards.mjs';
+import {createStudyLab} from './study-lab.mjs';
 const email=z.string().trim().email().max(254).transform(v=>v.toLowerCase());
 const password=z.string().min(10).max(128);
 const emailSchema=z.object({email});
@@ -20,24 +25,28 @@ function agentFailureDetails(failure,config){
   const cause=failure.cause?.cause||failure.cause;
   const details={provider:config.provider,model:config.model,status:failure.status||500,code:failure.code};
   if(failure.providerStatus!==undefined)details.providerStatus=failure.providerStatus;
-  if(failure.providerMessage)details.providerMessage=failure.providerMessage;
-  if(failure.providerCode)details.providerCode=failure.providerCode;
-  if(cause?.code||cause?.name)details.causeCode=cause.code||cause.name;
+  if(/^[A-Z_0-9]{1,64}$/.test(failure.providerCode||''))details.providerCode=failure.providerCode;
+  if(/^[A-Za-z_0-9]{1,64}$/.test(cause?.code||cause?.name||''))details.causeCode=cause.code||cause.name;
   return details;
 }
 function validate(schema,body){const p=schema.safeParse(body);if(!p.success)throw error('Confira os campos informados. A senha deve ter de 10 a 128 caracteres.');return p.data;}
 export function createAPI(db,config) {
+  const reportCache=createReportCache();
+  const metrics=config.metrics||createRuntimeMetrics();
   const mail=config.mailer||createMailer(db,config);
   const agentConfig=config.agentConfig||readAgentConfig(config.env||process.env);
-  const agentProvider=config.agentProvider||createAgentProvider(agentConfig,config.agentTransport);
-  const agentTools=config.agentTools||createAgentToolRegistry(config.agentToolsOptions);
+  const agentProvider=instrumentProvider(config.agentProvider||createAgentProvider(agentConfig,config.agentTransport),metrics,agentConfig.provider);
+  const labProvider=instrumentProvider(config.agentProvider||createAgentProvider({...agentConfig,fallbackModel:undefined,timeoutMs:Math.min(agentConfig.timeoutMs,45000)},config.agentTransport),metrics,agentConfig.provider);
+  const studyLab=createStudyLab(db,{provider:labProvider,providerName:agentConfig.provider,model:agentConfig.model});
+  const flashcards=createFlashcards(db,{provider:labProvider,providerName:agentConfig.provider,model:agentConfig.model});
+  const agentTools=config.agentTools||createAgentToolRegistry({...config.agentToolsOptions,prepareFlashcards:(user,input)=>flashcards.prepare(user,input),reviewSchedule:async user=>{const value=await flashcards.overview(user);const {daily: _daily,bySubject: _subjects,...counts}=value.metrics;return {metrics:counts,due:value.cards.filter(c=>!c.archived&&new Date(c.dueAt)<=new Date(value.now)).slice(0,10).map(c=>({concept:c.concept,dueAt:c.dueAt,subject:c.subjectName})),destination:"/laboratorio?aba=flashcards"};},prepareQuiz:(user,input)=>studyLab.prepare(user,input),prepareExam:(user,input)=>studyLab.prepareExam(user,input)});
   const classroom=createClassroomService(db,config.classroomConfig||readClassroomConfig(config.env||process.env,config.origin,config.local),config.classroomTransport);
   const attempts=new Map();
   let dummyHash;
   async function limited(req,key,max=10){
     const now=Date.now();for(const [k,v]of attempts)if(v.until<now)attempts.delete(k);
     if(attempts.size>10000)throw error('Muitas solicitações. Tente mais tarde.',429);
-    const k=`${req.socket.remoteAddress}:${key}`;const v=attempts.get(k)||{count:0,until:now+15*60000};v.count++;attempts.set(k,v);if(v.count>max)throw error('Muitas tentativas. Aguarde 15 minutos.',429);
+    const k=key.startsWith('agent:')?key:`${req.socket.remoteAddress}:${key}`;const v=attempts.get(k)||{count:0,until:now+15*60000};v.count++;attempts.set(k,v);if(v.count>max)throw error('Muitas tentativas. Aguarde 15 minutos.',429);
   }
   async function auth(req){const raw=readSessionCookie(req.headers.cookie);if(!raw)throw error('Entre na sua conta para continuar.',401);const u=(await db.query('SELECT u.* FROM users u JOIN auth_sessions s ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>now()',[digest(raw)])).rows[0];if(!u)throw error('Sua sessão expirou. Entre novamente.',401);return u;}
   async function sendToken(user,purpose){
@@ -48,10 +57,11 @@ export function createAPI(db,config) {
     await mail({to:user.email,subject:purpose==='VERIFY'?'Confirme seu e-mail — EduTrack':'Redefina sua senha — EduTrack',body:purpose==='VERIFY'?'Confirme seu endereço para ativar sua conta. O link expira em 24 horas. Se não foi você, ignore esta mensagem.':'Use o link para redefinir sua senha. Ele expira em 30 minutos. Se não foi você, ignore esta mensagem.',link});
   }
   async function body(req){let size=0;const chunks=[];for await(const chunk of req){size+=chunk.length;if(size>2e6)throw error('Solicitação muito grande.',413);chunks.push(chunk);}try{return JSON.parse(Buffer.concat(chunks).toString()||'{}');}catch{throw error('JSON inválido.');}}
-  return async(req,res)=>{
+  const handler=async(req,res)=>{
+    const requestStarted=performance.now();
     const path=new URL(req.url,config.origin).pathname;
     if(!path.startsWith('/api/'))return false;
-    function respond(code,value,cookie){res.writeHead(code,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...(cookie?{'Set-Cookie':cookie}:{})});res.end(JSON.stringify(value));}
+    function respond(code,value,cookie){metrics.record({operation:metricOperation(path),status:code,durationMs:performance.now()-requestStarted});res.writeHead(code,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer',...(cookie?{'Set-Cookie':cookie}:{})});res.end(JSON.stringify(value));}
     try{
       // Google returns through a cross-site navigation. Only this GET may bypass
       // the site guard, and it still requires a session-bound, one-use state.
@@ -113,6 +123,27 @@ export function createAPI(db,config) {
       if(path==='/api/auth/logout'&&req.method==='POST'){await db.query('DELETE FROM auth_sessions WHERE token_hash=$1',[digest(readSessionCookie(req.headers.cookie))]);respond(200,{ok:true},sessionCookie('',config.origin,true));return true;}
       const user=await auth(req);
       if(path==='/api/auth/session'&&req.method==='GET')respond(200,{user:account(user)});
+      else if(path==='/api/lab/flashcards'&&req.method==='GET')respond(200,await flashcards.overview(user,{subjectId:new URL(req.url,config.origin).searchParams.get('subject')||null,days:Number(new URL(req.url,config.origin).searchParams.get('days')||30),filter:new URL(req.url,config.origin).searchParams.get('filter')||'all',page:Number(new URL(req.url,config.origin).searchParams.get('page')||1),reviewPage:Number(new URL(req.url,config.origin).searchParams.get('reviewPage')||1),deckPage:Number(new URL(req.url,config.origin).searchParams.get('deckPage')||1)}));
+      else if(path==='/api/lab/flashcards'&&req.method==='POST'){await limited(req,'flashcard-prepare',30);respond(200,await flashcards.prepare(user,input));}
+      else if(path==='/api/lab/flashcard-sessions'&&req.method==='POST'){await limited(req,'flashcard-session',60);respond(200,await flashcards.start(user,input));}
+      else if(/^\/api\/lab\/flashcard-sessions\/[^/]+$/.test(path)&&req.method==='GET')respond(200,await flashcards.snapshot(user,path.split('/')[4]));
+      else if(/^\/api\/lab\/flashcard-sessions\/[^/]+\/(rate|move|close)$/.test(path)&&req.method==='POST'){await limited(req,'flashcard-session-write',400);respond(200,await flashcards[path.split('/')[5]](user,path.split('/')[4],input));}
+      else if(/^\/api\/lab\/flashcards\/[^/]+$/.test(path)&&req.method==='GET')respond(200,await flashcards.detail(user,path.split('/')[4]));
+      else if(/^\/api\/lab\/flashcards\/[^/]+\/generate$/.test(path)&&req.method==='POST'){await limited(req,'flashcard-generate',30);respond(200,await flashcards.generate(user,path.split('/')[4],input));}
+      else if(/^\/api\/lab\/flashcards\/cards\/[^/]+\/(edit|archive)$/.test(path)&&req.method==='POST'){await limited(req,'flashcard-edit',120);respond(200,await flashcards[path.split('/')[6]](user,path.split('/')[5],input));}
+      else if(path==='/api/lab'&&req.method==='GET')respond(200,await studyLab.overview(user,{page:Number(new URL(req.url,config.origin).searchParams.get('page')||1)}));
+      else if(path==='/api/lab/quizzes'&&req.method==='POST')respond(200,await studyLab.generate(user,input));
+      else if(path==='/api/lab/requests'&&req.method==='POST')respond(200,await studyLab.prepare(user,input));
+      else if(path==='/api/lab/exams'&&req.method==='POST')respond(200,await studyLab.prepareExam(user,input));
+      else if(/^\/api\/lab\/exams\/[^/]+\/generate$/.test(path)&&req.method==='POST')respond(200,await studyLab.generateExam(user,path.split('/')[4],input));
+      else if(/^\/api\/lab\/exams\/[^/]+\/answers$/.test(path)&&req.method==='POST')respond(200,await studyLab.answerExam(user,path.split('/')[4],input));
+      else if(/^\/api\/lab\/exams\/[^/]+\/marks$/.test(path)&&req.method==='POST')respond(200,await studyLab.markExam(user,path.split('/')[4],input));
+      else if(/^\/api\/lab\/exams\/[^/]+\/submit$/.test(path)&&req.method==='POST')respond(200,await studyLab.submitExam(user,path.split('/')[4],input));
+      else if(/^\/api\/lab\/quizzes\/[^/]+\/generate$/.test(path)&&req.method==='POST')respond(200,await studyLab.generatePrepared(user,path.split('/')[4],input));
+      else if(/^\/api\/lab\/quizzes\/[^/]+\/review$/.test(path)&&req.method==='POST')respond(200,await studyLab.review(user,path.split('/')[4],input));
+      else if(/^\/api\/lab\/quizzes\/[^/]+$/.test(path)&&req.method==='GET')respond(200,await studyLab.detail(user,path.split('/')[4]));
+      else if(/^\/api\/lab\/quizzes\/[^/]+\/answers$/.test(path)&&req.method==='POST')respond(200,await studyLab.answer(user,path.split('/')[4],input));
+      else if(/^\/api\/lab\/quizzes\/[^/]+\/finish$/.test(path)&&req.method==='POST')respond(200,await studyLab.finish(user,path.split('/')[4],input));
       else if(path==='/api/integrations/classroom/status'&&req.method==='GET')respond(200,await classroom.status(user));
       else if(path==='/api/integrations/classroom/deliveries'&&req.method==='POST'){if(!z.object({}).strict().safeParse(input).success)throw error('Consulta de entregas inválida.');await limited(req,'classroom-deliveries:'+user.id,120);respond(200,await classroom.deliveries(user));}
       else if(path==='/api/integrations/classroom/connect'&&req.method==='POST'){await limited(req,'classroom-connect',20);respond(200,await classroom.connect(user,digest(readSessionCookie(req.headers.cookie))));}
@@ -125,11 +156,11 @@ export function createAPI(db,config) {
         const params=new URL(req.url,config.origin).searchParams;
         const days=Number(params.get('days')||7),subject=params.get('subject')||'all';
         if(![7,30,90].includes(days)||subject!=='all'&&!z.string().uuid().safeParse(subject).success)throw error('Filtro inválido.');
-        const snapshot=await readData(db,user);
-        if(subject!=='all'&&!snapshot.data.subjects.some(s=>s.id===subject))throw error('Disciplina não autorizada.',403);
-        try{respond(200,await prepareReportAnalytics(snapshot.data,days,subject));}catch(cause){console.error('Reports analytics failed:',{code:cause.code,message:cause.message,python:cause.python,exitCode:cause.exitCode,stderr:cause.stderr,attempts:cause.attempts});throw error('Não foi possível preparar o relatório. Confira Python/Pandas e tente novamente.',503);}
+        if(subject!=='all'&&!(await db.query('SELECT id FROM subjects WHERE id=$1 AND user_id=$2',[subject,user.id])).rows.length)throw error('Disciplina não autorizada.',403);
+        try{respond(200,await reportCache.get(JSON.stringify([user.id,user.revision,days,subject,new Date().toLocaleDateString('en-CA',{timeZone:'America/Sao_Paulo'})]),async()=>{const snapshot=await readData(db,user);return (config.reportAnalytics||prepareReportAnalytics)(snapshot.data,days,subject);}));}catch(cause){console.error('Reports analytics failed:',{code:/^[a-z-]{1,64}$/.test(cause.code||'')?cause.code:'reports-unavailable',exitCode:Number.isInteger(cause.exitCode)?cause.exitCode:undefined});throw error('Não foi possível preparar o relatório. Confira Python/Pandas e tente novamente.',503);}
       }
       else if(path==='/api/ai/chat'&&req.method==='POST'){
+        await limited(req,'agent:'+user.id,30);
         const parsed=agentChatInputSchema.safeParse(input);
         if(!parsed.success)throw error('Mensagem inválida.',400);
         respond(200,await chatWithAgent({db,user,message:parsed.data.message,conversationId:parsed.data.conversationId,config:agentConfig,provider:agentProvider,tools:agentTools}));
@@ -138,7 +169,18 @@ export function createAPI(db,config) {
       else if(path==='/api/notifications'&&req.method==='GET')respond(200,await readNotifications(db,user));
       else if(path==='/api/notifications/read'&&req.method==='POST') {const info=validate(z.object({id:z.string().uuid().optional()}),input);await db.query("UPDATE notification_deliveries SET read_at=now() WHERE user_id=$1 AND status='SENT' AND ($2::uuid IS NULL OR id=$2)",[user.id,info.id||null]);respond(200,{ok:true});}
       else throw error('Não encontrado.',404);
-    }catch(e){const diagnostic=agentFailureDetails(e,agentConfig);if(diagnostic)console.error('Agent provider failed:',diagnostic);else if(!e.status)console.error('API operation failed:',e.code||e.name);respond(e.status||500,{message:e.status?e.message:'Não foi possível concluir. Tente novamente.'});}
+    }catch(e){
+      const diagnostic=agentFailureDetails(e,agentConfig);
+      if(diagnostic)console.error('Agent provider failed:',diagnostic);else if(!e.status)console.error('API operation failed:',e.code||e.name);
+      const agentFailure=path==='/api/ai/chat';
+      respond(e.status||500,{
+        message:agentFailure&&e.actionsApplied?agentErrorMessage(e.code,e.status,true):e.status?e.message:'Não foi possível concluir. Tente novamente.',
+        ...(agentFailure?{code:typeof e.code==='string'&&/^[a-z-]{1,80}$/.test(e.code)?e.code:'agent-error',...(z.string().uuid().safeParse(e.conversationId).success?{conversationId:e.conversationId}:{}),actionsApplied:e.actionsApplied===true}:{}),
+        ...(path.startsWith('/api/lab')?{code:typeof e.code==='string'&&/^[a-z-]{1,80}$/.test(e.code)?e.code:'lab-error'}:{}),
+      });
+    }
     return true;
   };
+  handler.metrics=()=>metrics.snapshot();
+  return handler;
 }

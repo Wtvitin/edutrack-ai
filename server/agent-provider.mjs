@@ -21,9 +21,9 @@ export function createFetchTransport(fetchImpl = globalThis.fetch) {
         if (text) {
           try { parsed = JSON.parse(text); } catch { parsed = { raw: text }; }
         }
-        return { status: response.status, body: parsed };
+        return { status: response.status, body: parsed, retryAfter: response.headers?.get('retry-after') };
       } catch (error) {
-        if (error?.name === 'AbortError') throw new AgentProviderError('O tempo da resposta do Provider expirou.', 504, 'provider-timeout', true, error);
+        if (controller.signal.aborted || error?.name === 'AbortError' || error?.name === 'TimeoutError') throw new AgentProviderError('O tempo da resposta do Provider expirou.', 504, 'provider-timeout', true, error);
         throw new AgentProviderError('Não foi possível acessar o Provider.', 503, 'provider-network', true, error);
       } finally {
         clearTimeout(timer);
@@ -90,11 +90,14 @@ function geminiSchema(schema, options = {}) {
   const result = {};
   const type = Array.isArray(schema.type) && options.tool ? schema.type.find(value => value !== 'null') || 'string' : schema.type;
   if (type !== undefined) result.type = type;
-  const schemaKeys = options.structured ? ['enum', 'required'] : ['title', 'description', 'enum', 'format', 'minimum', 'maximum', 'minItems', 'maxItems', 'required'];
+  if (options.tool && Array.isArray(schema.type) && schema.type.includes('null')) result.nullable = true;
+  const schemaKeys = ['title', 'description', 'enum', 'minimum', 'maximum', 'minItems', 'maxItems', 'required'];
   for (const key of schemaKeys) {
     if (schema[key] !== undefined) result[key] = schema[key];
   }
   if (schema.const !== undefined) result.enum = [schema.const];
+  if (schema.format && schema.format !== 'uuid') result.format = schema.format;
+  if (options.structured && schema.additionalProperties !== undefined) result.additionalProperties = typeof schema.additionalProperties === 'object' ? geminiSchema(schema.additionalProperties, options) : schema.additionalProperties;
   if (schema.properties && typeof schema.properties === 'object') result.properties = Object.fromEntries(Object.entries(schema.properties).map(([name, value]) => [name, geminiSchema(value, options)]));
   if (schema.items) result.items = geminiSchema(schema.items, options);
   if (schema.prefixItems) result.prefixItems = schema.prefixItems.map(value => geminiSchema(value, options));
@@ -142,9 +145,16 @@ function parseOpenRouterResponse(body, model) {
 }
 
 function geminiMessages(messages) {
-  return messages.filter(message => message.role !== 'system').map(message => {
+  const nativeIds = new Map();
+  for (const message of messages) {
+    if (!message.geminiContent) continue;
+    const calls = message.geminiContent.parts?.filter(part => part.functionCall) || [];
+    (message.tool_calls || []).forEach((call,index) => nativeIds.set(call.id,calls[index]?.functionCall?.id));
+  }
+  const contents = messages.filter(message => message.role !== 'system').map(message => {
     if (message.role === 'user') return { role: 'user', parts: [{ text: message.content || '' }] };
     if (message.role === 'assistant') {
+      if (message.geminiContent?.role === 'model' && Array.isArray(message.geminiContent.parts)) return structuredClone(message.geminiContent);
       const parts = [];
       if (message.content) parts.push({ text: message.content });
       for (const call of message.tool_calls || []) {
@@ -157,8 +167,17 @@ function geminiMessages(messages) {
     }
     let response;
     try { response = JSON.parse(message.content || '{}'); } catch { response = { value: message.content || '' }; }
-    return { role: 'user', parts: [{ functionResponse: { name: message.name || 'tool', ...(message.tool_call_id ? { id: message.tool_call_id } : {}), response } }] };
+    if (!response || typeof response !== 'object' || Array.isArray(response)) response = { result: response };
+    const nativeId = nativeIds.has(message.tool_call_id) ? nativeIds.get(message.tool_call_id) : message.tool_call_id;
+    return { role: 'user', parts: [{ functionResponse: { name: message.name || 'tool', ...(nativeId ? { id: nativeId } : {}), response } }] };
   });
+  // Parallel calls must be answered together, in the same order as the calls.
+  return contents.reduce((result, content) => {
+    const previous = result.at(-1);
+    if (content.parts.every(part => part.functionResponse) && previous?.parts.every(part => part.functionResponse)) previous.parts.push(...content.parts);
+    else result.push(content);
+    return result;
+  }, []);
 }
 
 function geminiSystemInstruction(messages) {
@@ -172,23 +191,30 @@ function geminiTools(tools = []) {
 }
 
 function parseGeminiResponse(body, model) {
-  const parts = body?.candidates?.[0]?.content?.parts;
+  const candidate = body?.candidates?.[0];
+  const reason = candidate?.finishReason;
+  const blocked = body?.promptFeedback?.blockReason;
+  if (blocked && blocked !== 'BLOCK_REASON_UNSPECIFIED' || ['SAFETY','RECITATION','BLOCKLIST','PROHIBITED_CONTENT','SPII','IMAGE_SAFETY','IMAGE_PROHIBITED_CONTENT','IMAGE_RECITATION'].includes(reason) || candidate?.safetyRatings?.some(rating => rating.blocked)) throw new AgentProviderError('O Gemini bloqueou esta solicitação por segurança. Reformule a mensagem.', 422, 'provider-safety-blocked');
+  if (reason === 'MAX_TOKENS') throw new AgentProviderError('O Gemini atingiu o limite de saída. Peça uma resposta mais curta.', 503, 'provider-output-truncated');
+  if (['MALFORMED_FUNCTION_CALL','UNEXPECTED_TOOL_CALL','TOO_MANY_TOOL_CALLS'].includes(reason)) throw new AgentProviderError('O Gemini retornou uma chamada de ferramenta inválida. Nenhuma nova ação foi executada.', 503, 'provider-invalid-tool-call');
+  if (reason && !['STOP','FINISH_REASON_UNSPECIFIED'].includes(reason)) throw new AgentProviderError('O Gemini não concluiu a resposta. Reformule a solicitação.', 503, 'provider-generation-failed');
+  const parts = candidate?.content?.parts;
   if (!Array.isArray(parts) || !parts.length) throw new AgentProviderError('Resposta vazia do Provider.', 503, 'provider-empty-response', true);
   let content = '';
   const toolCalls = [];
   parts.forEach((part, index) => {
-    if (typeof part?.text === 'string') content += part.text;
+    if (typeof part?.text === 'string' && !part.thought) content += part.text;
     if (part?.functionCall?.name) {
       toolCalls.push({
         id: String(part.functionCall.id || `call_${Date.now()}_${index}`),
         name: part.functionCall.name,
-        arguments: part.functionCall.args && typeof part.functionCall.args === 'object' ? part.functionCall.args : {},
+        arguments: part.functionCall.args === undefined ? {} : part.functionCall.args,
         ...(part.thoughtSignature ? { thoughtSignature: part.thoughtSignature } : {}),
       });
     }
   });
-  if (!content && !toolCalls.length) throw new AgentProviderError('Resposta vazia do Provider.', 503, 'provider-empty-response', true);
-  return { content: content || null, toolCalls: toolCalls.length ? toolCalls : undefined, model, usage: body?.usageMetadata, raw: body };
+  if (!content.trim() && !toolCalls.length) throw new AgentProviderError('Resposta vazia do Provider.', 503, 'provider-empty-response', true);
+  return { content: content || null, toolCalls: toolCalls.length ? toolCalls : undefined, geminiContent: { role: 'model', parts: structuredClone(parts) }, model, usage: body?.usageMetadata, raw: body };
 }
 
 async function completeOpenRouter(config, transport, request) {
@@ -257,27 +283,42 @@ async function completeGroq(config, transport, request) {
 
 async function completeGemini(config, transport, request) {
   if (!config.apiKey) throw new AgentProviderError('O Provider do Agent não está configurado.', 503, 'provider-not-configured');
+  const model = request.model || config.model;
+  if (!model) throw new AgentProviderError('O modelo do Agent não está configurado.', 503, 'model-not-configured');
   const contents = geminiMessages(request.messages);
-  if (request.responseFormat && !request.tools?.length) contents.unshift({ role: 'user', parts: [{ text: `Retorne somente JSON válido conforme este schema: ${JSON.stringify(request.responseFormat.schema)}` }] });
-  const body = { systemInstruction: geminiSystemInstruction(request.messages), contents, tools: geminiTools(request.tools), generationConfig: { temperature: request.temperature ?? 0.2, maxOutputTokens: request.maxTokens ?? 1600, ...(request.responseFormat && !request.tools?.length ? { responseMimeType: 'application/json', responseSchema: geminiSchema(request.responseFormat.schema, { structured: true }) } : {}) } };
+  const systemInstruction = geminiSystemInstruction(request.messages) || { parts: [] };
+  if (request.responseFormat && !request.tools?.length) systemInstruction.parts.push({ text: `As ferramentas já foram processadas. Não execute novas ações. Retorne somente JSON válido conforme este schema: ${JSON.stringify(request.responseFormat.schema)}` });
+  const body = { systemInstruction: systemInstruction.parts.length ? systemInstruction : undefined, contents, tools: geminiTools(request.tools), generationConfig: { temperature: request.temperature ?? 0.2, maxOutputTokens: request.maxTokens ?? 1600, ...(request.responseFormat && !request.tools?.length ? { responseMimeType: 'application/json', responseJsonSchema: geminiSchema(request.responseFormat.schema, { structured: true }) } : {}) } };
+  const deadline = Date.now() + config.timeoutMs;
   let lastError;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      const response = await transport.post(`${config.baseUrl}/${encodeURIComponent(request.model || config.model)}:generateContent`, { 'Content-Type': 'application/json', 'x-goog-api-key': config.apiKey }, body, config.timeoutMs);
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) throw lastError || new AgentProviderError('O tempo da resposta do Provider expirou.', 504, 'provider-timeout');
+      const response = await transport.post(`${config.baseUrl}/${encodeURIComponent(model)}:generateContent`, { 'Content-Type': 'application/json', 'x-goog-api-key': config.apiKey }, body, remaining);
       if (response.status < 200 || response.status >= 300) {
-        const error = new AgentProviderError('O Provider não conseguiu responder.', response.status === 429 ? 429 : 503, 'provider-http-error', transientStatus(response.status));
+        const details = Array.isArray(response.body?.error?.details) ? response.body.error.details : [];
+        const dailyQuota = response.status === 429 && details.some(detail => Array.isArray(detail?.violations) && detail.violations.some(violation => /perday|daily/i.test(violation.quotaId || '')));
+        const error = new AgentProviderError(dailyQuota ? 'A cota diária do Gemini foi atingida. Aguarde a renovação da cota.' : 'O Gemini não conseguiu responder agora.', response.status === 429 ? 429 : 503, dailyQuota ? 'provider-quota-exhausted' : 'provider-http-error', !dailyQuota && [408,429,500,502,503,504].includes(response.status));
         error.providerStatus = response.status;
-        error.providerMessage = response.body?.error?.message;
         error.providerCode = response.body?.error?.status;
+        const retryInfo = details.find(detail => typeof detail?.retryDelay === 'string')?.retryDelay;
+        const retrySeconds = response.retryAfter ?? retryInfo?.replace(/s$/,'');
+        const seconds = Number(retrySeconds);
+        error.retryAfterMs = retrySeconds == null ? 0 : Number.isFinite(seconds) ? Math.max(0,seconds*1000) : Math.max(0,Date.parse(retrySeconds)-Date.now()) || 0;
         if (!error.transient) throw error;
         lastError = error;
-      } else return parseGeminiResponse(response.body, request.model || config.model);
+      } else return parseGeminiResponse(response.body, model);
     } catch (error) {
       const normalized = error instanceof AgentProviderError ? error : new AgentProviderError('O Provider não conseguiu responder.', 503, 'provider-network', true, error);
       if (!normalized.transient) throw normalized;
       lastError = normalized;
     }
-    if (attempt === 0) await wait(50);
+    if (attempt === 0) {
+      const delay = Math.max(lastError?.retryAfterMs || 0, (config.retryBaseMs ?? 500) * 2 ** attempt + Math.floor(Math.random()*125));
+      if (delay >= deadline-Date.now()) break;
+      await wait(delay);
+    }
   }
   throw lastError || new AgentProviderError('O Provider está indisponível.', 503, 'provider-unavailable', true);
 }

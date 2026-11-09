@@ -2,7 +2,7 @@
 import { useEffect,useState,type ReactNode,type CSSProperties } from "react";
 import {usePathname} from 'next/navigation';
 import Link from "./link";
-import { ArrowRight,ArrowUpRight,BookOpen,CalendarDays,CircleHelp,Clock3,LayoutDashboard,Link2,ListTodo,Search,Settings2,Sparkles,TrendingUp } from "lucide-react";
+import { ArrowRight,ArrowUpRight,BookOpen,CalendarDays,CircleHelp,Clock3,FlaskConical,LayoutDashboard,Link2,ListTodo,Search,Settings2,Sparkles,TrendingUp } from "lucide-react";
 import { Sidebar,SidebarContent,SidebarFooter,SidebarHeader,SidebarProvider,SidebarTrigger,useSidebar } from "@/components/ui/sidebar";
 import { Progress } from "@/components/ui/progress";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -22,6 +22,7 @@ import { useTheme } from "next-themes";
 import {StudyDashboard as Dashboard} from './study-dashboard';
 import {IntegrationsView} from './integrations-view';
 import {ClassroomTaskBadge,useClassroomDeliveryPolling} from './classroom-deliveries';
+import {LabView} from './lab-view';
 
 export const navigation=[
  {id:"hoje",label:"Visão geral",href:"/",icon:LayoutDashboard},
@@ -29,6 +30,7 @@ export const navigation=[
  {id:"tarefas",label:"Tarefas",href:"/tarefas",icon:ListTodo},
  {id:"calendario",label:"Calendário",href:"/calendario",icon:CalendarDays},
  {id:"sessoes",label:"Sessões de estudo",href:"/sessoes",icon:Clock3},
+ {id:"laboratorio",label:"Laboratório de Estudos",href:"/laboratorio",icon:FlaskConical},
  {id:"relatorios",label:"Relatórios",href:"/relatorios",icon:TrendingUp},
  {id:"integracoes",label:"Integrações",href:"/integracoes",icon:Link2},
  {id:"agente",label:"Agente de IA",href:"/agente",icon:Sparkles},
@@ -40,7 +42,7 @@ export function PanelHeader({title,href,children}:{title:string;href?:string;chi
 function AppSidebar({page}:{page:string}){const {setOpenMobile}=useSidebar();return <Sidebar className="edu-sidebar"><SidebarHeader className="sidebar-brand"><Brand/><span className="workspace-label">SEU ESPAÇO DE ESTUDOS</span></SidebarHeader><SidebarContent><nav className="main-nav" aria-label="Navegação principal">{navigation.map(({id,label,href,icon:Icon})=><Link key={id} href={href} className={`nav-item ${page===id?"active":""}`} aria-current={page===id?"page":undefined} onClick={()=>setOpenMobile(false)}><Icon size={20}/><span>{label}</span>{id==="agente"&&<span className="tiny-badge">AI</span>}</Link>)}</nav><div className="sidebar-motivation"><span className="orbit orbit-one"/><span className="orbit orbit-two"/><Sparkles className="lime-star" size={25}/><p>Um pouco hoje.<br/><strong>Um novo amanhã.</strong></p><span>Cada sessão conta.</span></div></SidebarContent><SidebarFooter onClick={() => setOpenMobile(false)}><nav className="main-nav"><Link className={`nav-item ${page==="configuracoes"?"active":""}`} href="/configuracoes"><Settings2 size={19}/>Configurações</Link><Link className="nav-item" href="/ajuda"><CircleHelp size={19}/>Ajuda e suporte</Link></nav><Link href="/inicio" className="sidebar-bottom">Conheça o EduTrack <ArrowUpRight size={15}/></Link></SidebarFooter></Sidebar>;}
 export function StudyChart({data}:{data:StudyData}){const days=lastSevenDays(data.sessions);const max=Math.max(120,...days.map(d=>d.minutes));return <div className="study-chart" role="img" aria-label={`Tempo estudado nos últimos sete dias: ${days.map(d=>`${d.label}, ${d.minutes} minutos`).join("; ")}`}><div className="chart-scale"><span>{formatMinutes(max)}</span><span>{formatMinutes(max/2)}</span><span>0h</span></div><div className="chart-bars">{days.map((day,i)=><div className="chart-column" key={day.date}><div className="bar-space"><div className={`chart-bar ${i===6?"current":""}`} style={{height:`${Math.max(0,day.minutes/max*100)}%`}}><span>{formatMinutes(day.minutes)}</span></div></div><span className={i===6?"today-label":""}>{day.label}</span></div>)}</div></div>;}
 export function TaskRow({task,data,toggle}:{task:Task;data:StudyData;toggle:(id:string)=>void}){const subject=data.subjects.find(s=>s.id===task.subjectId);return <div className={`task-row ${task.done?"completed":""}`}><Checkbox checked={task.done} onCheckedChange={()=>toggle(task.id)} aria-label={`${task.done?"Reabrir":"Concluir"} ${task.title}`} className="task-checkbox"/><div className="task-copy"><strong>{task.title}</strong><span><span className={`subject-dot ${subject?.color||"blue"}`}/>{subject?.name||"Geral"}<span className="separator-dot">·</span>{dueLabel(task.due)}</span><TaskDeadlineMessage task={task}/><ClassroomTaskBadge taskId={task.id}/></div>{!task.done&&task.status!=="CANCELLED"&&<span className={`priority-tag priority-${task.priority}`}>{priorityLabels[task.priority]}</span>}{task.status==="IN_PROGRESS"&&<span className="pill purple">Em andamento</span>}{task.status==="CANCELLED"&&<span className="pill">Cancelada</span>}{task.done&&<span className="pill green">Concluída no EduTrack</span>}</div>;}
-export function SubjectCards({data}:{data:StudyData}){return <div className="subject-grid">{data.subjects.map(subject=>{const tasks=data.tasks.filter(t=>t.subjectId===subject.id);const done=tasks.filter(t=>t.done).length;return <Link href={`/disciplinas/${subject.id}`} key={subject.id} className="subject-card"><span className={`subject-icon ${subject.color}`}><BookOpen size={21}/></span><ArrowUpRight size={16} className="subject-arrow"/><h3>{subject.name}</h3><span className="muted small">{tasks.length-done} {tasks.length-done === 1 ? "tarefa pendente" : "tarefas pendentes"}</span><Progress value={tasks.length?done/tasks.length*100:0} className={`subject-progress ${subject.color}`} aria-label={`Tarefas concluídas de ${subject.name}`}/><span className="subject-caption">{done} de {tasks.length} concluídas</span></Link>;})}</div>;}
+export function SubjectCards({data}:{data:StudyData}){return <div className="subject-grid">{data.subjects.map(subject=>{const tasks=data.tasks.filter(t=>t.subjectId===subject.id&&t.status!=="CANCELLED");const done=tasks.filter(t=>t.done).length;return <Link href={`/disciplinas/${subject.id}`} key={subject.id} className="subject-card"><span className={`subject-icon ${subject.color}`}><BookOpen size={21}/></span><ArrowUpRight size={16} className="subject-arrow"/><h3>{subject.name}</h3><span className="muted small">{tasks.length-done} {tasks.length-done === 1 ? "tarefa pendente" : "tarefas pendentes"}</span><Progress value={tasks.length?done/tasks.length*100:0} className={`subject-progress ${subject.color}`} aria-label={`Tarefas concluídas de ${subject.name}`}/><span className="subject-caption">{done} de {tasks.length} concluídas</span></Link>;})}</div>;}
 
 export default function EduTrack({initialPage="hoje"}:{initialPage?:string}){
 
@@ -75,11 +77,12 @@ switch(page){
  case "disciplinas":content=<Subjects {...props}/>;break;
  case "calendario":content=<CalendarView {...props}/>;break;
  case "sessoes":content=<Sessions {...props}/>;break;
+ case "laboratorio":content=<LabView data={data} mode={mode}/>;break;
  case "progresso":case "relatorios":content=<Reports {...props}/>;break;
  case "notificacoes":content=<Notifications {...props}/>;break;
  case "historico":content=<HistoryView {...props}/>;break;
  case "integracoes":content=<IntegrationsView mode={mode} saving={saving} onImported={reload}/>;break;
- case "agente":content=<AgentView {...props}/>;break;
+ case "agente":content=<AgentView {...props} onDataChanged={reload}/>;break;
  case "perfil":content=<ProfileView key={ready?"loaded":"loading"} {...props}/>;break;
  case "configuracoes":content=<AccountSettings {...props}/>;break;
  case "ajuda":content=<HelpView/>;break;

@@ -121,8 +121,13 @@ export function validateToolArguments(name, args) {
   return result.success ? { success: true, data: result.data } : { success: false, error: new AgentToolError('Argumentos inválidos para a Tool.', 400, 'invalid-tool-arguments', result.error) };
 }
 
-export function createAgentToolRegistry({ readSnapshot = readData, analytics = prepareAnalytics } = {}) {
+export function createAgentToolRegistry({ readSnapshot = readData, analytics = prepareAnalytics,prepareQuiz,prepareExam,prepareFlashcards,reviewSchedule } = {}) {
   const executors = {
+    prepare_study_flashcards:async({user,args,executionId})=>{const d=await prepareFlashcards(user,{...args,requestId:executionId});return {id:d.id,title:d.topic,status:d.status,destination:'/laboratorio?aba=flashcards&baralho='+d.id};},
+    get_review_schedule:async({user})=>reviewSchedule(user),
+    prepare_study_exam: async({user,args,executionId})=>{
+      const exam=await prepareExam(user,{...args,requestId:executionId});return {id:exam.id,title:exam.topic,destination:`/laboratorio?atividade=${exam.id}`,mode:'exam',count:exam.count,durationMinutes:0,status:exam.status};
+    },
     create_task: ({ db, user, args, executionId }) => createTask(db, user, args, executionId),
     update_task: ({ db, user, args }) => updateTask(db, user, args),
     complete_task: ({ db, user, args }) => completeTask(db, user, args),
@@ -131,8 +136,12 @@ export function createAgentToolRegistry({ readSnapshot = readData, analytics = p
     get_academic_performance: ({ db, user }) => analyticsResult(readSnapshot, analytics, db, user, 'get_academic_performance'),
     get_study_trends: ({ db, user }) => analyticsResult(readSnapshot, analytics, db, user, 'get_study_trends'),
     get_general_dashboard: ({ db, user }) => analyticsResult(readSnapshot, analytics, db, user, 'get_general_dashboard'),
+    prepare_study_quiz: async({user,args,executionId})=>{
+      const quiz=await prepareQuiz(user,{...args,requestId:executionId});
+      return {id:quiz.id,title:quiz.topic,destination:`/laboratorio?atividade=${quiz.id}`,count:quiz.count,alternatives:quiz.alternatives,status:quiz.status};
+    },
   };
-  const definitions = toolDefinitions.map(definition => ({ ...definition, execute: executors[definition.name] }));
+  const definitions = toolDefinitions.filter(definition=>(definition.name!=='prepare_study_flashcards'||typeof prepareFlashcards==='function')&&(definition.name!=='get_review_schedule'||typeof reviewSchedule==='function')&&(definition.name!=='prepare_study_quiz'||typeof prepareQuiz==='function')&&(definition.name!=='prepare_study_exam'||typeof prepareExam==='function')).map(definition => ({ ...definition, execute: executors[definition.name] }));
   const registry = new Map(definitions.map(definition => [definition.name, definition]));
   return {
     list: () => definitions,

@@ -1,0 +1,3 @@
+"use client";
+export type PageInfo={page:number;pageSize:number;total:number;pages:number};
+export function Pagination({info,label,onChange,disabled=false}:{info:PageInfo;label:string;onChange:(page:number)=>void;disabled?:boolean}){if(info.pages<=1)return null;return <nav className="list-pagination" aria-label={label}><button type="button" className="button secondary" disabled={disabled||info.page<=1} onClick={()=>onChange(info.page-1)}>Anterior · {label}</button><span aria-live="polite">Página {info.page} de {info.pages} · {info.total} registros</span><button type="button" className="button secondary" disabled={disabled||info.page>=info.pages} onClick={()=>onChange(info.page+1)}>Próxima · {label}</button></nav>;}

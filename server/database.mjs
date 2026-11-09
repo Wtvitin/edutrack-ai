@@ -18,7 +18,7 @@ export async function openDatabase({ url = process.env.DATABASE_URL, directory =
     await db.waitReady;
   }
   await db.exec('CREATE TABLE IF NOT EXISTS schema_migrations(name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())');
-  for (const name of ['001_core.sql', '002_accounts.sql', '003_ai_agent_indexes.sql', '004_ai_provider.sql', '005_study_goal.sql', '006_classroom.sql', '007_classroom_deliveries.sql', '008_deadline_reminders.sql']) {
+  for (const name of ['001_core.sql', '002_accounts.sql', '003_ai_agent_indexes.sql', '004_ai_provider.sql', '005_study_goal.sql', '006_classroom.sql', '007_classroom_deliveries.sql', '008_deadline_reminders.sql', '009_study_lab.sql', '010_lab_assisted.sql', '011_study_exams.sql', '012_flashcards.sql', '013_operational_guards.sql']) {
     const applied = await db.query('SELECT name FROM schema_migrations WHERE name=$1', [name]);
     if (!applied.rows.length) {
       const sql = await readFile(new URL(`../database/${name}`, import.meta.url), 'utf8');

@@ -1,82 +1,16 @@
 "use client";
-
-import {useRef,useState,type MouseEvent} from 'react';
-import {ArrowRight,BookOpen,Check,ExternalLink,Layers3,Link2,LockKeyhole,Search,ShieldCheck,Unplug} from 'lucide-react';
-import {Dialog,DialogContent,DialogDescription,DialogTitle} from '@/components/ui/dialog';
-import {filterIntegrations,integrationCategories,integrations,type Integration,type IntegrationCategory} from '@/lib/integrations';
+import {ArrowRight,BookOpen,Check,Layers3,Link2,LockKeyhole,ShieldCheck} from 'lucide-react';
+import {integrations,type Integration} from '@/lib/integrations';
 import Link from './link';
 import {ClassroomConnection} from './classroom-connection';
-
-function AppMark({app}:{app:Integration}) {
-  return <span className={`integration-app-mark brand-${app.brand}`} aria-hidden="true">{app.symbol}</span>;
-}
-
-export function IntegrationsView({mode,saving,onImported}:{mode:'account'|'demo';saving:boolean;onImported:()=>Promise<void>}) {
-  const [query,setQuery]=useState('');
-  const [category,setCategory]=useState<IntegrationCategory>('all');
-  const [selectedId,setSelectedId]=useState<string|null>(null);
-  const detailTrigger=useRef<HTMLButtonElement|null>(null);
-  const selected=integrations.find(app=>app.id===selectedId);
-  const featured=integrations[0];
-  const filtered=filterIntegrations(query,category);
-  function showDetails(app:Integration,event:MouseEvent<HTMLButtonElement>) {
-    detailTrigger.current=event.currentTarget;
-    setSelectedId(app.id);
-  }
-  function clearFilters() {setQuery('');setCategory('all');}
-
+function AppMark({app}:{app:Integration}){return <span className={`integration-app-mark brand-${app.brand}`} aria-hidden="true">{app.symbol}</span>;}
+export function IntegrationsView({mode,saving,onImported}:{mode:'account'|'demo';saving:boolean;onImported:()=>Promise<void>}){
+  const classroom=integrations.find(app=>app.id==='google-classroom')!;
   return <div className="integrations-page">
-    <div className="page-heading"><div><div className="eyebrow">SEUS APLICATIVOS, UM SÓ ESPAÇO</div>
-      <h1>Seu estudo, conectado<span className="heading-dot">.</span></h1>
-      <p>Conecte o Classroom e conheça as próximas integrações para reunir atividades, prazos e compromissos.</p>
-    </div><a className="button secondary" href="#integration-catalog"><Layers3 size={17}/>Explorar aplicativos</a></div>
-
-    <div className="integration-preview-notice" role="note"><Unplug size={20}/><p><strong>Classroom com autorização por conta.</strong> A conexão abaixo permite importação manual após seu consentimento. Os outros cinco aplicativos continuam planejados, sem conexão ativa.</p></div>
-
-    <section className="integration-featured" aria-labelledby="classroom-featured-title">
-      <div className="integration-featured-copy"><span className="integration-featured-kicker"><BookOpen size={16}/>EM DESTAQUE</span>
-        <div className="integration-featured-title"><AppMark app={featured}/><div><h2 id="classroom-featured-title">Google Classroom</h2><span>Da sala de aula ao seu planejamento.</span></div></div>
-        <p>Traga as atividades das suas turmas e organize cada entrega com mais clareza, sem alterar trabalhos no Google.</p>
-        <ul className="integration-featured-benefits"><li><Check size={16}/>Turmas por disciplina</li><li><Check size={16}/>Atividades e prazos</li><li><Check size={16}/>Sem tarefas duplicadas</li></ul>
-        <div className="integration-featured-actions"><a className="button primary" href="#classroom-connection">Gerenciar Classroom<ArrowRight size={17}/></a><span className="integration-status">Somente leitura</span></div>
-      </div>
-      <div className="integration-flow-preview" aria-label="Fluxo de importação após autorização"><span className="integration-preview-label">COMO FUNCIONA</span>
-        <div className="integration-flow-source"><AppMark app={featured}/><span><strong>Google Classroom</strong><small>Turmas e atividades autorizadas</small></span></div>
-        <div className="integration-flow-bridge"><span/><Link2 size={21}/><span/></div>
-        <div className="integration-flow-destination"><span className="integration-edu-mark"><Layers3 size={25}/></span><span><strong>Seu EduTrack</strong><small>Disciplinas, tarefas e calendário</small></span></div>
-        <p><LockKeyhole size={14}/>Somente após sua autorização</p>
-      </div>
-    </section>
+    <div className="page-heading"><div><div className="eyebrow">DA SALA DE AULA AO SEU PLANEJAMENTO</div><h1>Seu estudo, conectado<span className="heading-dot">.</span></h1><p>Reúna as atividades e os prazos do Google Classroom no seu EduTrack.</p></div></div>
+    <section className="integration-featured" aria-labelledby="classroom-featured-title"><div className="integration-featured-copy"><span className="integration-featured-kicker"><BookOpen size={16}/>GOOGLE CLASSROOM</span><div className="integration-featured-title"><AppMark app={classroom}/><div><h2 id="classroom-featured-title">Google Classroom</h2><span>Suas turmas e atividades em um só lugar.</span></div></div><p>Importe as turmas que você escolher e acompanhe os prazos e as entregas, sem alterar trabalhos no Google.</p><ul className="integration-featured-benefits"><li><Check size={16}/>Turmas por disciplina</li><li><Check size={16}/>Atividades e prazos</li><li><Check size={16}/>Sem tarefas duplicadas</li></ul><div className="integration-featured-actions"><a className="button primary" href="#classroom-connection">Gerenciar Classroom<ArrowRight size={17}/></a><span className="integration-status">Somente leitura</span></div></div><div className="integration-flow-preview" aria-label="Fluxo de importação após autorização"><span className="integration-preview-label">COMO FUNCIONA</span><div className="integration-flow-source"><AppMark app={classroom}/><span><strong>Google Classroom</strong><small>Turmas e atividades autorizadas</small></span></div><div className="integration-flow-bridge"><span/><Link2 size={21}/><span/></div><div className="integration-flow-destination"><span className="integration-edu-mark"><Layers3 size={25}/></span><span><strong>Seu EduTrack</strong><small>Disciplinas, tarefas e calendário</small></span></div><p><LockKeyhole size={14}/>Somente após sua autorização</p></div></section>
     <ClassroomConnection mode={mode} saving={saving} onImported={onImported}/>
-
-    <section className="integration-catalog" id="integration-catalog" aria-labelledby="integration-catalog-title">
-      <div className="integration-catalog-heading"><div><h2 id="integration-catalog-title">Aplicativos para sua rotina</h2><p>Encontre a plataforma que você já usa para estudar.</p></div>
-        <label className="search-field integration-search"><Search size={18}/><input type="search" aria-label="Buscar aplicativos" placeholder="Buscar aplicativo..." value={query} onChange={e=>setQuery(e.target.value)}/></label>
-      </div>
-      <div className="integration-catalog-filters"><div className="integration-category-tabs" role="group" aria-label="Filtrar aplicativos por categoria">{integrationCategories.map(item=><button key={item.id} aria-pressed={category===item.id} onClick={()=>setCategory(item.id)}>{item.label}</button>)}</div>
-        <p role="status" aria-live="polite">{filtered.length} {filtered.length===1?'aplicativo':'aplicativos'}</p></div>
-      {filtered.length?<div className="integration-grid">{filtered.map(app=><article className="integration-card" key={app.id} aria-labelledby={`integration-title-${app.id}`}>
-        <div className="integration-card-top"><AppMark app={app}/><span className="integration-status">{app.status==='available'?'Disponível para configurar':'Planejada'}</span></div>
-        <span className="integration-category-label">{integrationCategories.find(item=>item.id===app.category)?.label}</span><h3 id={`integration-title-${app.id}`}>{app.name}</h3><p>{app.description}</p>
-        <ul>{app.proposedFeatures.slice(0,2).map(feature=><li key={feature}><Check size={14}/>{feature}</li>)}</ul>
-        {app.status==='available'?<a className="button secondary" href="#classroom-connection">Gerenciar conexão<ArrowRight size={16}/></a>:<button className="button secondary" aria-label={`Ver proposta de integração com ${app.name}`} onClick={e=>showDetails(app,e)}>Ver proposta<ArrowRight size={16}/></button>}
-      </article>)}</div>:<div className="integration-empty"><Search size={28}/><h3>Nenhum aplicativo encontrado</h3><p>Tente outro nome ou escolha uma categoria diferente.</p><button className="button secondary" onClick={clearFilters}>Limpar filtros</button></div>}
-    </section>
-
-    <section className="integration-how-it-works" aria-labelledby="integration-how-title"><div><span className="eyebrow">CONEXÕES COM CLAREZA</span><h2 id="integration-how-title">Você escolhe o que entra.</h2><p>No Classroom, autorize sua conta e selecione as turmas antes de sincronizar. Nos demais aplicativos, este fluxo ainda é uma proposta.</p></div>
-      <ol><li><span>01</span><div><h3>Autorizar</h3><p>Escolher o aplicativo e conferir as permissões solicitadas.</p></div></li><li><span>02</span><div><h3>Revisar</h3><p>Selecionar turmas, listas ou eventos antes de importar.</p></div></li><li><span>03</span><div><h3>Organizar</h3><p>Relacionar atividades às disciplinas e acompanhar os prazos.</p></div></li></ol>
-    </section>
-    <div className="integration-safety"><ShieldCheck size={21}/><div><h3>Seus dados continuam sob seu controle</h3><p>O login Google acontece no site do Google. A API do Classroom é acessada somente pelo backend, com leitura autorizada e opção de desconectar.</p></div><Link href="/tarefas" className="text-link">Organizar tarefas agora<ArrowRight size={16}/></Link></div>
-
-    <Dialog open={!!selected} onOpenChange={open=>!open&&setSelectedId(null)}><DialogContent className="edu-dialog integration-detail-dialog" onCloseAutoFocus={event=>{event.preventDefault();detailTrigger.current?.focus();}}>
-      <DialogTitle>{selected?.name||'Proposta de integração'}</DialogTitle><DialogDescription>Proposta de integração · ainda não disponível no EduTrack.</DialogDescription>
-      {selected&&<><AppMark app={selected}/>
-        <span className="integration-status">Planejada · não conectada</span><p className="integration-detail-description">{selected.description}</p>
-        <div className="integration-detail-features"><h3>Recursos propostos</h3><ul>{selected.proposedFeatures.map(feature=><li key={feature}><Check size={16}/>{feature}</li>)}</ul></div>
-        <div className="integration-detail-requirement"><ShieldCheck size={19}/><p>{selected.requirement} Os recursos poderão variar conforme as APIs e permissões disponíveis.</p></div>
-        <p className="integration-detail-note">Nenhuma conta será conectada ao fechar ou abrir esta proposta. A autenticação e a sincronização serão implementadas em uma etapa futura.</p>
-        <div className="integration-detail-actions"><a className="button secondary" href={selected.officialUrl} target="_blank" rel="noopener noreferrer">Site oficial<ExternalLink size={16}/></a><button className="button primary" onClick={()=>setSelectedId(null)}>Entendi</button></div>
-      </>}
-    </DialogContent></Dialog>
+    <section className="integration-how-it-works" aria-labelledby="integration-how-title"><div><span className="eyebrow">CONEXÕES COM CLAREZA</span><h2 id="integration-how-title">Você escolhe o que entra.</h2><p>Autorize sua conta do Google, selecione as turmas e confira as atividades antes de sincronizar.</p></div><ol><li><span>01</span><div><h3>Autorizar</h3><p>Confira as permissões de leitura solicitadas.</p></div></li><li><span>02</span><div><h3>Revisar</h3><p>Selecione suas turmas antes de importar.</p></div></li><li><span>03</span><div><h3>Organizar</h3><p>Relacione as atividades às disciplinas e acompanhe os prazos.</p></div></li></ol></section>
+    <div className="integration-safety"><ShieldCheck size={21}/><div><h3>Seus dados continuam sob seu controle</h3><p>O login Google acontece no site do Google. A API é acessada pelo backend, com leitura autorizada e opção de desconectar.</p></div><Link href="/tarefas" className="text-link">Organizar tarefas agora<ArrowRight size={16}/></Link></div>
   </div>;
 }
