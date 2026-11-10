@@ -19,7 +19,16 @@
 .task-slice-tabs button,.active-filter{font:inherit;font-size:.75rem;min-height:40px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--muted-foreground)}
 .task-slice-tabs button[aria-pressed=true],.active-filter{background:var(--secondary);color:var(--foreground);border-color:#9280ef}
 .dashboard-task-item,.calendar-task-item{display:flex;align-items:center;min-width:0;border-bottom:1px solid var(--border);gap:8px}
-.dashboard-task-item .task-row,.calendar-task-item .task-row{flex:1;min-width:0;border-bottom:0}
+.dashboard-task-item .task-row,.calendar-page-v2 .calendar-task-item .task-row{
+  flex:1;min-width:0;border-bottom:0;display:grid;
+  grid-template-columns:auto minmax(0,1fr);align-items:start;gap:6px 10px;
+}
+.calendar-task-item .task-checkbox{margin-top:2px}
+.calendar-task-item .task-copy>span:first-of-type{flex-wrap:wrap;gap:4px 6px}
+.calendar-task-item .task-subject-name{min-width:0;overflow-wrap:anywhere}
+.calendar-task-item .task-due-label{white-space:nowrap}
+.calendar-task-item .task-copy .separator-dot{display:none}
+.calendar-task-item .task-row>:is(.priority-tag,.pill){grid-column:2;justify-self:start;max-width:100%;white-space:normal}
 .dashboard-task-item>.icon-button,.calendar-task-item>.icon-button{flex-shrink:0;min-width:44px;min-height:44px}
 .dashboard-task-list>.text-link{margin-top:20px}.compact-empty{padding:28px 12px}
 .next-step-panel{background:linear-gradient(145deg,var(--card),var(--secondary))!important}
@@ -95,7 +104,7 @@
   .task-detail-list{grid-template-columns:1fr}.task-detail-dialog .inline-actions{flex-direction:column;align-items:stretch}.task-detail-dialog .inline-actions>.button{width:100%}
   .report-v2 .panel-heading{flex-direction:column;align-items:stretch}.report-v2 .period-tabs button{flex:1;min-height:44px}.report-period-summary{align-items:start;flex-direction:column;gap:10px}.report-period-summary h3{font-size:1.8rem}.report-v2 .interactive-chart{height:220px}.chart-controls>span{display:none}.day-detail-picker input{flex:1;min-width:150px}.report-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.report-priorities>div{grid-template-columns:repeat(2,minmax(0,1fr))}.report-table-heading{flex-direction:column;align-items:stretch}.report-table-heading h3{margin-bottom:0}.report-table-heading .field{min-width:0}.report-v2 .report-table-wrap{max-width:100%}.report-v2 .report-table th,.report-v2 .report-table td{white-space:nowrap}.report-v2 .report-table th[scope=row]{white-space:normal;min-width:155px}.report-v2 .inline-actions>.button{flex:1;white-space:normal;font-size:.8rem}.report-insights article{padding:16px}
   .calendar-toolbar{display:grid;grid-template-columns:1fr 1fr;gap:12px}.calendar-toolbar>.field{min-width:0}.calendar-toolbar>.field:first-child{grid-column:1/-1}.calendar-view-toggle{align-self:end}.calendar-view-toggle button{flex:1;justify-content:center;font-size:.75rem;padding:7px 9px}.calendar-summary{gap:5px;flex-direction:column;align-items:start;margin-bottom:16px}.calendar-summary>span{min-height:32px}
-  .calendar-page-v2 .calendar-heading{align-items:start;gap:8px}.calendar-page-v2 .calendar-heading h2{font-size:.9rem}.calendar-page-v2 .calendar-heading .inline-actions{flex-shrink:0}.calendar-page-v2 .calendar-day,.calendar-page-v2 .calendar-blank{min-height:78px;padding:5px 2px}.calendar-page-v2 .calendar-day>span:first-child{padding:2px 5px}.calendar-study-dot>span{display:none}.calendar-study-dot{margin-top:4px;padding-left:5px}.calendar-keyboard-tip{display:none}.calendar-legend{gap:10px;font-size:.65rem}.calendar-side{display:flex}.calendar-page-v2 .calendar-grid{gap:3px}.calendar-page-v2 .calendar-event{height:5px;min-height:5px;margin-top:4px}.calendar-task-item .task-row .task-copy{flex-basis:calc(100% - 40px)}.calendar-task-item .task-row>.pill{margin-left:32px}.agenda-date{font-size:.8rem}.calendar-month-picker input{max-width:140px}
+  .calendar-page-v2 .calendar-heading{align-items:start;gap:8px}.calendar-page-v2 .calendar-heading h2{font-size:.9rem}.calendar-page-v2 .calendar-heading .inline-actions{flex-shrink:0}.calendar-page-v2 .calendar-day,.calendar-page-v2 .calendar-blank{min-height:78px;padding:5px 2px}.calendar-page-v2 .calendar-day>span:first-child{padding:2px 5px}.calendar-study-dot>span{display:none}.calendar-study-dot{margin-top:4px;padding-left:5px}.calendar-keyboard-tip{display:none}.calendar-legend{gap:10px;font-size:.65rem}.calendar-side{display:flex}.calendar-page-v2 .calendar-grid{gap:3px}.calendar-page-v2 .calendar-event{height:5px;min-height:5px;margin-top:4px}.agenda-date{font-size:.8rem}.calendar-month-picker input{max-width:140px}
   .study-goal-settings .edu-form>.button{align-self:stretch}.goal-presets>.button{flex:1;font-size:.75rem;padding:8px}
   .editable-task .task-row{flex-wrap:wrap}.editable-task .task-copy{flex-basis:calc(100% - 40px)}.filter-row .search-field{min-width:0}
 }
