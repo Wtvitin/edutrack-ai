@@ -10,6 +10,7 @@ import { createAgentProvider } from './agent-provider.mjs';
 import { createAgentToolRegistry } from './agent-tools.mjs';
 import { chatWithAgent } from './agent-orchestrator.mjs';
 import {CLASSROOM_CALLBACK,readClassroomConfig,createClassroomService} from './classroom.mjs';
+import { openApiSpec, swaggerHtml } from './openapi.mjs';
 const email=z.string().trim().email().max(254).transform(v=>v.toLowerCase());
 const password=z.string().min(10).max(128);
 const emailSchema=z.object({email});
@@ -73,6 +74,12 @@ export function createAPI(db,config) {
       }
       const input=req.method==='GET'?{}:await body(req);
       if(path==='/api/health'&&req.method==='GET'){respond(200,{ok:true,localMailbox:config.local&&config.mailMode==='local'});return true;}
+      if(['/api/docs','/api/swagger'].includes(path)&&req.method==='GET'){
+        res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
+        res.end(swaggerHtml);
+        return true;
+      }
+      if(path==='/api/openapi.json'&&req.method==='GET'){respond(200,openApiSpec);return true;}
       if(path==='/api/dev/mail'&&req.method==='GET'){
         if(!config.local||config.mailMode!=='local')throw error('Não encontrado.',404);
         respond(200,{messages:(await db.query('SELECT id,recipient,subject,body,link,created_at FROM development_mail ORDER BY created_at DESC LIMIT 30')).rows});return true;

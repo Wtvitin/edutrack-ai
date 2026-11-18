@@ -20,14 +20,31 @@ const command=process.argv.includes('--dev')?'dev':'start';
 process.env.NEXT_TELEMETRY_DISABLED ??= '1';
 const child=spawn(process.execPath,[fileURLToPath(new URL('../node_modules/next/dist/bin/next',import.meta.url)),command,'--port',String(uiPort),'--hostname','127.0.0.1'],{stdio:'inherit',windowsHide:true});
 const server=createServer(async(req,res)=>{
+  const pathname=new URL(req.url,origin).pathname;
+  if(['/docs','/swagger'].includes(pathname)){
+    res.writeHead(302,{Location:'/api/docs'});
+    res.end();
+    return;
+  }
   if(await api(req,res))return;
   const proxy=request({hostname:'127.0.0.1',port:uiPort,path:req.url,method:req.method,headers:req.headers},response=>{res.writeHead(response.statusCode,response.headers);response.pipe(res);});
   req.on('error',()=>proxy.destroy());res.on('close',()=>proxy.destroy());
   proxy.on('error',()=>{if(!res.headersSent)res.writeHead(503,{'Content-Type':'text/plain; charset=utf-8'});res.end('EduTrack está iniciando. Atualize em alguns segundos.');});req.pipe(proxy);
 });
 server.on('upgrade',(req,socket,head)=>{
+  socket.on('error',()=>{try{socket.destroy();}catch{}});
   const proxy=request({hostname:'127.0.0.1',port:uiPort,path:req.url,headers:req.headers});
-  proxy.on('upgrade',(response,upstream,buffer)=>{socket.write(`HTTP/1.1 101 Switching Protocols\r\n${Object.entries(response.headers).map(([k,v])=>`${k}: ${v}`).join('\r\n')}\r\n\r\n`);upstream.write(head);socket.write(buffer);upstream.pipe(socket);socket.pipe(upstream);});proxy.on('error',()=>socket.destroy());proxy.end();
+  proxy.on('upgrade',(response,upstream,buffer)=>{
+    upstream.on('error',()=>{try{socket.destroy();}catch{}});
+    socket.on('error',()=>{try{upstream.destroy();}catch{}});
+    socket.write(`HTTP/1.1 101 Switching Protocols\r\n${Object.entries(response.headers).map(([k,v])=>`${k}: ${v}`).join('\r\n')}\r\n\r\n`);
+    upstream.write(head);
+    socket.write(buffer);
+    upstream.pipe(socket);
+    socket.pipe(upstream);
+  });
+  proxy.on('error',()=>{try{socket.destroy();}catch{}});
+  proxy.end();
 });
 server.listen(port,'127.0.0.1',()=>console.log(`EduTrack: ${origin} | e-mails: ${mailMode} | sem Docker`));
 async function close(){server.close();child.kill();await db.close();process.exit();}
