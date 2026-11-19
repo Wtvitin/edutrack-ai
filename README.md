@@ -20,7 +20,7 @@ Aplicação web para organizar a rotina acadêmica em um só lugar: disciplinas,
 
 - [Visão geral](#visão-geral)
 - [Funcionalidades](#funcionalidades)
-- [Tecnologias](#tecnologias)
+- [Tecnologias](#tecnologias-utilizadas)
 - [Pré-requisitos](#pré-requisitos)
 - [Instalação e execução](#instalação-e-execução)
 - [Configuração](#configuração)
@@ -94,7 +94,7 @@ A disponibilidade do agente depende de configurar um provider e sua credencial. 
 
 A página `/integracoes` apresenta um catálogo de integrações educacionais. Atualmente, o Google Classroom oferece conexão OAuth por conta e importação manual de atividades publicadas, após configuração e consentimento. Microsoft Teams for Education, Moodle, Canvas LMS, Notion e Google Agenda aparecem como opções planejadas; a presença no catálogo não significa que estejam conectados.
 
-## Tecnologias
+## Tecnologias Utilizadas
 
 | Área | Tecnologias |
 | --- | --- |
