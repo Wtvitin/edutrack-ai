@@ -56,6 +56,8 @@ test('orchestrator preserva thoughtSignature ao retomar conversa Gemini apos Too
 
 test('orchestrator entrega grafico semanal validado se o provider falha apos a consulta', async () => {
   const { db, user } = await fixture();
+  const message = 'Compare meu desempenho nas ultimas 4 semanas';
+  const range = temporalPeriodDates(normalizeTemporalRequest(message));
   let calls = 0;
   const provider = { async complete() {
     calls += 1;
@@ -64,17 +66,17 @@ test('orchestrator entrega grafico semanal validado se o provider falha apos a c
   } };
   const tools = createAgentToolRegistry({
     readSnapshot: async () => ({ data: { subjects: [], tasks: [], sessions: [
-      { id: '1', subjectId: '', date: '2026-10-06', minutes: 10 },
-      { id: '2', subjectId: '', date: '2026-10-13', minutes: 20 },
-      { id: '3', subjectId: '', date: '2026-10-20', minutes: 30 },
-      { id: '4', subjectId: '', date: '2026-10-27', minutes: 40 },
+      { id: '1', subjectId: '', date: range.start, minutes: 10 },
+      { id: '2', subjectId: '', date: shiftDate(range.start, 7), minutes: 20 },
+      { id: '3', subjectId: '', date: shiftDate(range.start, 14), minutes: 30 },
+      { id: '4', subjectId: '', date: shiftDate(range.start, 21), minutes: 40 },
     ] } }),
   });
-  const result = await chatWithAgent({ db, user, message: 'Compare meu desempenho nas ultimas 4 semanas', config: config(), provider, tools });
+  const result = await chatWithAgent({ db, user, message, config: config(), provider, tools });
   assert.equal(result.response.type, 'analysis');
   assert.equal(result.response.chart.data.length, 4);
   assert.deepEqual(result.response.chart.data.map(point => point.minutes), [10, 20, 30, 40]);
-  assert.equal(result.response.chart.data[0].period, '2026-10-05 a 2026-10-11');
+  assert.equal(result.response.chart.data[0].period, `${range.start} a ${shiftDate(range.start, 6)}`);
   assert.equal(result.metadata.textFallback, true);
 });
 

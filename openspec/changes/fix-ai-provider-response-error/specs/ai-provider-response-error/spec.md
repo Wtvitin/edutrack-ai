@@ -47,12 +47,3 @@ Registry, autenticação, autorização, ownership, auditoria e ausência de fal
 - WHEN `LLM_PROVIDER=google-gemini`
 - THEN o adapter Gemini MUST continuar usando o mapeamento Gemini existente sem
   receber a transformação específica do Groq.
-
-## Traceability
-
-| Requirement | Implementation | Test |
-| --- | --- | --- |
-| Tool Call Groq | `server/agent-provider.mjs:43`, `server/agent-provider.mjs:215` | `tests/agent-provider.test.mjs:123` |
-| Filtro nullable | `server/agent-provider.mjs:47`, `server/agent-schemas.mjs:40` | `tests/agent-provider.test.mjs:115`, `tests/agent-tools.test.mjs:46` |
-| Structured Output | `server/agent-provider.mjs:98`, `server/agent-provider.mjs:224` | `tests/agent-provider.test.mjs:130`, `tests/agent-orchestrator.test.mjs:55` |
-| Preservação | `server/agent-provider.mjs:264`, `server/agent-orchestrator.mjs:145` | `tests/agent-provider.test.mjs:60`, `tests/agent-orchestrator.test.mjs:70` |
