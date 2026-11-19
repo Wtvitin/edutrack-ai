@@ -1,4 +1,4 @@
-export type Subject = { id: string; name: string; color: string; description: string };
+export type Subject = { id: string; name: string; color: string; description: string; teacher?: string; hours?: number };
 export type Task = { id: string; title: string; subjectId: string; due: string; done: boolean; priority: "baixa" | "normal" | "alta" | "urgente"; description: string; status?: "TODO"|"IN_PROGRESS"|"COMPLETED"|"CANCELLED"; difficulty?: "EASY"|"MEDIUM"|"HARD"; estimatedMinutes?: number|null; completedAt?: string|null };
 export type StudySession = { id: string; subjectId: string; minutes: number; date: string };
 export type StudyData = { version: 1; profile: { id?: string; name: string; goal: string; weeklyGoalMinutes?: number; email?: string; notificationsEnabled?: boolean; theme?: "system"|"light"|"dark" }; subjects: Subject[]; tasks: Task[]; sessions: StudySession[] };

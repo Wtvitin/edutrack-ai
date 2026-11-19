@@ -336,3 +336,21 @@ Os testes automatizados não substituem um teste com credenciais reais do proved
 ---
 
 Desenvolvido como projeto de organização e acompanhamento acadêmico, com foco em separação de dados por conta, cálculos analíticos determinísticos e integrações controladas pelo backend.
+
+## Entrega acadêmica do Classroom
+
+As [16 atividades separadas](docs/entregas-classroom/README.md) registram os requisitos, a implementação real e as adaptações solicitadas para Next.js/Node.js/PostgreSQL.
+
+A entrega complementa a aplicação com CRUD REST de disciplinas, cálculo de progresso em Python, busca por nome OU tarefas atrasadas e geração de PDF no servidor. Instale também ReportLab pelas dependências de `analytics/requirements.txt`.
+
+- `GET/POST /api/subjects` e `GET/PATCH/DELETE /api/subjects/{id}`: disciplinas da conta; escritas exigem `revision`.
+- `GET /api/progress?subject=all`: retorna `completed`, `total` e `percentage`.
+- `GET /api/subjects/search?q=texto&overdue=true`: união dos critérios de nome e atraso.
+- `POST /api/reports/generate` com `{"subject":"all"}`: retorna URL protegida da própria aplicação.
+- `GET /api/reports/download?subject=all`: gera e baixa o PDF com sessão autenticada.
+
+Nenhuma dessas rotas aceita identidade fornecida pelo cliente. Disciplinas em uso devem ter tarefas/sessões reatribuídas antes de uma exclusão pela API REST. O snapshot continua compatível e preserva professor/carga horária quando um cliente antigo omite esses campos.
+
+A migração `009_subject_academic_fields.sql` é aditiva e aplicada pelo mecanismo existente na inicialização. Não foi aplicada a bancos pessoais nesta execução. A nova execução Python usa `PYTHON_BIN` como caminho literal de executável, sem opções de shell. Em Windows, informe o caminho do `python.exe` se necessário.
+
+[Resultados e limites da validação](docs/entregas-classroom/VALIDACAO.md).

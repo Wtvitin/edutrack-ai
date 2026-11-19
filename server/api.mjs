@@ -11,6 +11,7 @@ import { createAgentToolRegistry } from './agent-tools.mjs';
 import { chatWithAgent } from './agent-orchestrator.mjs';
 import {CLASSROOM_CALLBACK,readClassroomConfig,createClassroomService} from './classroom.mjs';
 import { openApiSpec, swaggerHtml } from './openapi.mjs';
+import {handleCoursework} from './coursework.mjs';
 const email=z.string().trim().email().max(254).transform(v=>v.toLowerCase());
 const password=z.string().min(10).max(128);
 const emailSchema=z.object({email});
@@ -119,6 +120,7 @@ export function createAPI(db,config) {
       }
       if(path==='/api/auth/logout'&&req.method==='POST'){await db.query('DELETE FROM auth_sessions WHERE token_hash=$1',[digest(readSessionCookie(req.headers.cookie))]);respond(200,{ok:true},sessionCookie('',config.origin,true));return true;}
       const user=await auth(req);
+      if(await handleCoursework({db,user,req,res,path,input,respond}))return true;
       if(path==='/api/auth/session'&&req.method==='GET')respond(200,{user:account(user)});
       else if(path==='/api/integrations/classroom/status'&&req.method==='GET')respond(200,await classroom.status(user));
       else if(path==='/api/integrations/classroom/deliveries'&&req.method==='POST'){if(!z.object({}).strict().safeParse(input).success)throw error('Consulta de entregas inválida.');await limited(req,'classroom-deliveries:'+user.id,120);respond(200,await classroom.deliveries(user));}

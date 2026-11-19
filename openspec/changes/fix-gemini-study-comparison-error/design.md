@@ -42,3 +42,11 @@ evitar atribuir falha de processo antigo à Tool `get_study_trends`.
 O `userId` continua vindo da sessão autenticada. A Tool Registry, schemas,
 ownership, auditoria e validação final Zod não são bypassados pela preservação do
 campo Gemini.
+
+## Traceability
+
+| Requirement | Implementation | Test/Evidence |
+| --- | --- | --- |
+| Metadados Gemini | `server/agent-orchestrator.mjs:160` | `tests/agent-orchestrator.test.mjs` |
+| Continuidade | `server/agent-provider.mjs:144-191`, `server/agent-orchestrator.mjs:121-194` | teste de continuidade + E2E autenticado |
+| Provider explícito | `server/agent-config.mjs:24-43`, `server/agent-provider.mjs:293-302` | testes de provider + E2E Gemini |

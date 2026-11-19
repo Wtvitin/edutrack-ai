@@ -1,3 +1,5 @@
+import {courseworkPaths} from './coursework-openapi.mjs';
+
 export const openApiSpec = {
   openapi: '3.0.3',
   info: {
@@ -24,6 +26,7 @@ export const openApiSpec = {
     { name: 'Diagnóstico e Desenvolvimento', description: 'Health check e caixa de e-mails local para ambiente de desenvolvimento' }
   ],
   paths: {
+    ...courseworkPaths,
     '/api/health': {
       get: {
         tags: ['Diagnóstico e Desenvolvimento'],

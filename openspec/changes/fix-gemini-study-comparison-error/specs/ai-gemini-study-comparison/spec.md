@@ -35,11 +35,3 @@ silently to Gemini, Groq or OpenRouter after a provider error.
 
 - WHEN `LLM_PROVIDER=google-gemini`
 - THEN the request MUST use the Gemini adapter and no provider fallback.
-
-## Traceability
-
-| Requirement | Implementation | Test/Evidence |
-| --- | --- | --- |
-| Metadados Gemini | `server/agent-orchestrator.mjs:160` | `tests/agent-orchestrator.test.mjs` |
-| Continuidade | `server/agent-provider.mjs:144-191`, `server/agent-orchestrator.mjs:121-194` | teste de continuidade + E2E autenticado |
-| Provider explícito | `server/agent-config.mjs:24-43`, `server/agent-provider.mjs:293-302` | testes de provider + E2E Gemini |
