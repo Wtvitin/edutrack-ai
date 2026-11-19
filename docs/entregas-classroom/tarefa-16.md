@@ -18,7 +18,9 @@ O OpenSpec ajudou a delimitar o que precisava ser completado antes de escrever c
 
 Foram corrigidos um teste antigo dependente de datas fixas, um arquivo legado Vite sem uso que impedia a checagem de tipos, avisos de formatação em duas propostas antigas e vulnerabilidades de dependências identificadas durante a auditoria.
 
-O PR final desta entrega deve permanecer aberto para revisão. Propostas antigas que ainda tenham pendências não serão marcadas como concluídas apenas para esvaziar openspec/changes/. A validação sintática de uma proposta não comprova sua implementação.
+PR final: https://github.com/Wtvitin/edutrack-ai/pull/3
+
+O PR final desta entrega permanece aberto para revisão. Propostas antigas que ainda tenham pendências não serão marcadas como concluídas apenas para esvaziar openspec/changes/. A validação sintática de uma proposta não comprova sua implementação.
 
 A adoção de Node.js/PostgreSQL/Next.js em lugar de Xano/FlutterFlow foi solicitada pelo aluno nesta execução. A aceitação dessa equivalência pelo professor não foi verificada.
 

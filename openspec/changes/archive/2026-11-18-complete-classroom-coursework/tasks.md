@@ -9,5 +9,5 @@
 - [x] Run Python and authenticated integration tests using disposable data.
 - [x] Run available project quality checks and document limitations.
 - [x] Produce sixteen separate evidence-based activity responses.
-- [ ] Archive this change after verifying its implemented requirements.
-- [ ] Prepare the final delivery pull request without merging it.
+- [x] Archive this change after verifying its implemented requirements.
+- [x] Prepare the final delivery pull request without merging it.

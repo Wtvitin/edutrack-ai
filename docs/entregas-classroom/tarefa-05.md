@@ -48,3 +48,5 @@ Capture uma screenshot mostrando o commit de merge (será algo como "Merge pull 
 Screenshot do README.md atualizado com a seção "Tecnologias Utilizadas" que você adicionou.
 
 As evidências e limitações desta resposta devem ser lidas em conjunto. Logs reais de comandos não são apresentados como screenshots de VS Code, Xano ou FlutterFlow.
+
+PR de entrega final: https://github.com/Wtvitin/edutrack-ai/pull/3

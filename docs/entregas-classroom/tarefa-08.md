@@ -34,3 +34,7 @@ Screenshot da pasta openspec/changes/archive/ mostrando sua proposta arquivada.
 Link do repositório GitHub com a proposta arquivada.
 
 As evidências e limitações desta resposta devem ser lidas em conjunto. Logs reais de comandos não são apresentados como screenshots de VS Code, Xano ou FlutterFlow.
+
+PR de entrega final: https://github.com/Wtvitin/edutrack-ai/pull/3
+
+Proposta arquivada: https://github.com/Wtvitin/edutrack-ai/tree/release/final-delivery-classroom-20261119/openspec/changes/archive/2026-11-18-complete-classroom-coursework

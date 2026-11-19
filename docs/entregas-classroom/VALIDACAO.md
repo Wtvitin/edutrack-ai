@@ -28,3 +28,8 @@ Os schemas record do agente foram adaptados à assinatura de chave e valor do Zo
 - Instalação e screenshots de VS Code/Gemini no computador pessoal não foram verificadas.
 - Propostas antigas com pendências mantêm seu estado real. Validação de formato não equivale a implementação concluída.
 - O PR final deve permanecer aberto e sem merge para revisão.
+
+## Revisão final no GitHub
+
+- PR de documentação #2: incorporado à main.
+- PR de entrega #3: aberto, sem merge, aguardando revisão.

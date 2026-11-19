@@ -33,3 +33,5 @@ Print do terminal mostrando o resultado de git --version.
 Print do histórico de commits no GitHub (mostrando o commit realizado).
 
 As evidências e limitações desta resposta devem ser lidas em conjunto. Logs reais de comandos não são apresentados como screenshots de VS Code, Xano ou FlutterFlow.
+
+PR de entrega final: https://github.com/Wtvitin/edutrack-ai/pull/3
