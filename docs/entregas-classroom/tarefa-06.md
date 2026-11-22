@@ -22,7 +22,7 @@ Não foi declarada a duplicação de dois arquivos Figma: a análise foi adaptad
 
 ## Evidências no projeto
 
-- [docs/pesquisa/referencias.md](https://github.com/Wtvitin/edutrack-ai/blob/release/final-delivery-classroom-20261119/docs/pesquisa/referencias.md)
+- [docs/pesquisa/referencias.md](https://github.com/Wtvitin/edutrack-ai/blob/main/docs/pesquisa/referencias.md)
 
 Repositório: https://github.com/Wtvitin/edutrack-ai
 
