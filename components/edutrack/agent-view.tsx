@@ -3,6 +3,7 @@
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { ArrowUp, BookOpen, CalendarDays, Check, ChevronRight, Clock3, GraduationCap, History, ListChecks, MessageCircle, Send, ShieldCheck, Sparkles, Target, WandSparkles } from 'lucide-react';
 import { formatMinutes, lastSevenDays, type StudyData } from '@/lib/edutrack';
+import { flashcardReviewPrompt, quickQuizPrompt } from '@/lib/lab-prompts.mjs';
 import { AgentChart } from './agent-chart';
 import { AgentRequestError, chatWithAgent, type AgentResponse } from './agent-api';
 import type { ViewProps } from './views';
@@ -15,8 +16,8 @@ const suggestions = [
   { label: 'Ver minhas tarefas', description: 'Confira e organize suas atividades', prompt: 'Quais são minhas tarefas?', icon: ListChecks },
   { label: 'Analisar meu desempenho', description: 'Entenda seus resultados e sua evolução', prompt: 'Como está meu desempenho?', icon: Target },
   { label: 'Ver tendências de estudo', description: 'Compare seu ritmo de estudo', prompt: 'Mostre minhas tendências de estudo', icon: CalendarDays },
-  { label: 'Praticar com um quiz', description: 'Teste seus conhecimentos na prática', prompt: 'Monte um quiz com base nas minhas matérias e atividades e abra no Laboratório.', icon: WandSparkles },
-  { label: 'Criar flashcards', description: 'Revise os principais conceitos', prompt: 'Crie flashcards dos assuntos em que mais errei e abra o Laboratório.', icon: BookOpen },
+  { label: 'Praticar com um quiz', description: 'Teste seus conhecimentos na prática', prompt: quickQuizPrompt, icon: WandSparkles },
+  { label: 'Criar flashcards', description: 'Revise os principais conceitos', prompt: flashcardReviewPrompt, icon: BookOpen },
   { label: 'Preparar um simulado', description: 'Pratique em formato de prova', prompt: 'Prepare um simulado de 30 questões sobre a matéria que mais preciso revisar.', icon: GraduationCap },
 ];
 

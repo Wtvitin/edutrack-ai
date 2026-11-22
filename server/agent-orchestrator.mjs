@@ -3,6 +3,7 @@ import { readAgentConfig, buildSystemPrompt, AgentError } from './agent-config.m
 import { actionResponseSchema, agentChatInputSchema, analysisResponseSchema, responseJsonSchemas, structuredResponseSchema, textResponseSchema, toolCallSchema } from './agent-schemas.mjs';
 import { createAgentProvider } from './agent-provider.mjs';
 import { createAgentToolRegistry } from './agent-tools.mjs';
+import { flashcardReviewPrompt, quickQuizPrompt } from '../lib/lab-prompts.mjs';
 
 function redact(value) {
   if (Array.isArray(value)) return value.map(redact);
@@ -154,10 +155,16 @@ async function runAgentTurn({ db, user, message, conversationId, config = readAg
   let iterations = 0;
   let toolCallCount = 0;
   let actionsApplied = false;
+  const preset = input.data.message === quickQuizPrompt ? { name: 'prepare_study_quiz', arguments: { prompt: quickQuizPrompt } }
+    : input.data.message === flashcardReviewPrompt ? { name: 'prepare_study_flashcards', arguments: { prompt: flashcardReviewPrompt, fromErrors: true } }
+    : null;
   try {
   while (iterations < config.maxIterations) {
     iterations += 1;
-    const result = await agentProvider.complete({
+    const usePreset = iterations === 1 && preset && registry.has(preset.name);
+    const result = usePreset
+      ? { content: null, toolCalls: [{ id: randomUUID(), ...preset }] }
+      : await agentProvider.complete({
       model: config.model,
       messages,
       tools: expectedType ? undefined : registry.list(),
@@ -217,6 +224,7 @@ async function runAgentTurn({ db, user, message, conversationId, config = readAg
       const toolResult = failure ? errorContent(failure) : output;
       messages.push({ role: 'tool', name, tool_call_id: callId, content: JSON.stringify(toolResult) });
       await persistMessage(db, currentConversationId, 'TOOL', toolContent(name, callId, toolResult));
+      if (usePreset && failure) throw failure;
     }
 
     // A saved Laboratory draft has everything the client needs to open it.

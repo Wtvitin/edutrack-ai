@@ -2,6 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readAgentConfig } from '../server/agent-config.mjs';
 import { AgentProviderError, createAgentProvider } from '../server/agent-provider.mjs';
+import { flashcardResponseFormat } from '../lib/flashcard-schemas.mjs';
+import { assistedResponseFormat } from '../lib/lab-schemas.mjs';
 
 function config(overrides = {}) {
   return { ...readAgentConfig({ LLM_PROVIDER: 'openrouter', OPENROUTER_API_KEY: 'test-key', LLM_MODEL: 'primary', LLM_FALLBACK_MODEL: 'fallback', LLM_TIMEOUT_MS: '1000' }), ...overrides };
@@ -148,6 +150,28 @@ test('Groq envia Structured Output em requisição sem Tools', async () => {
   assert.deepEqual(request.body.response_format, { type: 'json_object' });
   assert.match(request.body.messages[0].content, /agent_text_response_v1/);
   assert.match(request.body.messages[0].content, /JSON válido/);
+});
+
+test('Groq GPT-OSS envia os esquemas estritos de quiz e flashcards sem instruções de ferramentas', async () => {
+  const sent = [];
+  const provider = createAgentProvider(config({ provider: 'groq', apiKey: 'test-key', model: 'openai/gpt-oss-120b' }), {
+    async post(_url, _headers, body) {
+      sent.push(body);
+      return { status: 200, body: { choices: [{ message: { content: '{}' } }] } };
+    },
+  });
+  const messages = [{ role: 'system', content: 'Gere material de estudo em JSON.' }, { role: 'user', content: 'SQL' }];
+  for (const responseFormat of [assistedResponseFormat, flashcardResponseFormat]) {
+    await provider.complete({ messages, responseFormat });
+    const body = sent.at(-1);
+    assert.equal(body.response_format.type, 'json_schema');
+    assert.equal(body.response_format.json_schema.name, responseFormat.name);
+    assert.equal(body.response_format.json_schema.strict, true);
+    assert.equal(body.response_format.json_schema.schema.additionalProperties, false);
+    assert.equal(body.response_format.json_schema.schema.$schema, undefined);
+    assert.equal(body.reasoning_effort, 'low');
+    assert.deepEqual(body.messages, messages);
+  }
 });
 
 test('Groq repete somente falha transitória e não usa fallback', async () => {

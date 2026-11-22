@@ -3,6 +3,7 @@ import { readData } from './data.mjs';
 import { prepareAnalytics } from './analytics.mjs';
 import { AgentError } from './agent-config.mjs';
 import { toolArgumentSchemas, toolDefinitions } from './agent-schemas.mjs';
+import { LabError } from './lab-model.mjs';
 
 const priorityLabels = { LOW: 'baixa', MEDIUM: 'normal', HIGH: 'alta', URGENT: 'urgente' };
 const day = value => value ? new Date(value).toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }) : '';
@@ -157,6 +158,7 @@ export function createAgentToolRegistry({ readSnapshot = readData, analytics = p
         return await definition.execute({ ...context, args: parsed.data });
       } catch (error) {
         if (error instanceof AgentError) throw error;
+        if (error instanceof LabError) throw new AgentToolError(error.message, error.status, error.code, error);
         throw new AgentToolError('Não foi possível executar a Tool.', 503, 'tool-failed', error);
       }
     },

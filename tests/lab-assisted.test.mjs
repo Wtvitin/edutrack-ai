@@ -7,6 +7,8 @@ import {collectLabContext,shuffleQuiz} from '../server/lab-assisted.mjs';
 import {createAgentToolRegistry} from '../server/agent-tools.mjs';
 import {chatWithAgent} from '../server/agent-orchestrator.mjs';
 import {readAgentConfig} from '../server/agent-config.mjs';
+import {flashcardReviewPrompt,quickQuizPrompt} from '../lib/lab-prompts.mjs';
+import {createFlashcards} from '../server/flashcards.mjs';
 import {labConfig,labDocument,labFixtureProvider} from './fixtures/lab.mjs';
 
 async function fixture(){
@@ -131,6 +133,32 @@ test('assisted failures reject forged context/evidence and never silently regene
       const source=labDocument(labConfig()),snapshot=structuredClone(source);const shuffled=shuffleQuiz(source,()=>0);
       assert.deepEqual(source,snapshot);assert.equal(shuffled.questions.length,5);assert.ok(shuffled.questions.every(q=>q.explanation.answer===q.options[q.correctIndex]));
     });
+  }finally{await db.close();}
+});
+
+test('the preset quiz opens a five-question draft without calling the AI provider',async()=>{
+  const {db,a}=await fixture();
+  try{
+    const provider={async complete(){assert.fail('The quiz draft does not need AI');}};
+    const lab=createStudyLab(db,{provider,providerName:'groq',model:'fixture',draw:max=>max-1});
+    const tools=createAgentToolRegistry({prepareQuiz:(user,input)=>lab.prepare(user,input)});
+    const result=await chatWithAgent({db,user:a,message:quickQuizPrompt,provider,tools});
+    assert.equal(result.response.action,'prepare_study_quiz');
+    assert.equal(result.response.result.status,'draft');
+    assert.equal(result.response.result.count,5);
+    assert.equal((await lab.detail(a,result.response.result.id)).status,'draft');
+    assert.equal((await db.query("SELECT count(*) AS n FROM ai_tool_executions WHERE user_id=$1 AND tool_name='prepare_study_quiz' AND status='SUCCESS'",[a.id])).rows[0].n,1);
+  }finally{await db.close();}
+});
+
+test('the flashcard preset reports missing review evidence without calling the AI provider',async()=>{
+  const {db,a}=await fixture();
+  try{
+    const provider={async complete(){assert.fail('Checking review evidence does not need AI');}};
+    const flashcards=createFlashcards(db,{provider});
+    const tools=createAgentToolRegistry({prepareFlashcards:(user,input)=>flashcards.prepare(user,input)});
+    await assert.rejects(chatWithAgent({db,user:a,message:flashcardReviewPrompt,provider,tools}),
+      error=>error.code==='flashcard-no-evidence'&&error.status===409);
   }finally{await db.close();}
 });
 
