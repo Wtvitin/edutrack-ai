@@ -4,7 +4,7 @@ const id = z.string().uuid();
 export const snapshotSchema = z.object({
   revision:z.number().int().nonnegative(), data:z.object({
     version:z.literal(1), profile:z.object({ name:z.string().trim().min(1).max(80), goal:z.string().max(300), weeklyGoalMinutes:z.number().int().min(0).max(10080).optional(), notificationsEnabled:z.boolean().optional(), theme:z.enum(['system','light','dark']).optional() }),
-    subjects:z.array(z.object({ id,name:z.string().trim().min(1).max(60),color:z.enum(['blue','purple','green','rose','orange']),description:z.string().max(200) })).max(500),
+    subjects:z.array(z.object({ id,name:z.string().trim().min(1).max(60),color:z.enum(['blue','purple','green','rose','orange']),description:z.string().max(200),teacher:z.string().trim().max(120).optional(),hours:z.number().int().min(0).max(10000).optional() })).max(500),
     tasks:z.array(z.object({ id,title:z.string().trim().min(1).max(140),subjectId:z.union([id,z.literal('')]),due:date,done:z.boolean(),priority:z.enum(['baixa','normal','alta','urgente']),description:z.string().max(1500),status:z.enum(['TODO','IN_PROGRESS','COMPLETED','CANCELLED']).optional(),difficulty:z.enum(['EASY','MEDIUM','HARD']).optional(),estimatedMinutes:z.number().int().min(1).max(10080).nullable().optional(),completedAt:z.string().nullable().optional() })).max(5000),
     sessions:z.array(z.object({id,subjectId:z.union([id,z.literal('')]),date:date.refine(v=>v!==''),minutes:z.number().int().min(1).max(1440)})).max(20000),
   }),
@@ -18,7 +18,7 @@ export async function readData(db, user) {
   const tasks=(await db.query('SELECT * FROM academic_tasks WHERE user_id=$1 ORDER BY created_at,id',[user.id])).rows;
   const sessions=(await db.query('SELECT * FROM study_sessions WHERE user_id=$1 ORDER BY started_at,id',[user.id])).rows;
   return {revision:user.revision,data:{version:1,profile:{id:user.id,name:user.name,goal:user.goal,weeklyGoalMinutes:user.weekly_goal_minutes,email:user.email,notificationsEnabled:user.notifications_enabled,theme:user.theme},
-    subjects:subjects.map(s=>({id:s.id,name:s.name,color:s.color,description:s.description||''})),
+    subjects:subjects.map(s=>({id:s.id,name:s.name,color:s.color,description:s.description||'',teacher:s.teacher,hours:s.hours})),
     tasks:tasks.map(t=>({id:t.id,title:t.title,subjectId:t.subject_id,due:day(t.due_date),done:t.status==='COMPLETED',status:t.status,priority:displayPriority[t.priority],description:t.description||'',difficulty:t.difficulty,estimatedMinutes:t.estimated_minutes,completedAt:iso(t.completed_at)})),
     sessions:sessions.map(s=>({id:s.id,subjectId:s.subject_id,date:day(s.started_at),minutes:Math.floor(s.duration_seconds/60)})),
   }};
@@ -39,7 +39,7 @@ export async function saveData(db,user,input) {
     const general=(await tx.query('SELECT id FROM subjects WHERE user_id=$1 AND is_general=true',[user.id])).rows[0]?.id;
     if(!general||!ownedSubjects.has(general)) throw Object.assign(new Error('Mantenha a disciplina Estudo livre.'),{status:400});
     if([...data.tasks,...data.sessions].some(t=>t.subjectId&&!ownedSubjects.has(t.subjectId))) throw Object.assign(new Error('Escolha uma disciplina da sua conta.'),{status:400});
-    for(const s of data.subjects) await tx.query(`INSERT INTO subjects(id,user_id,name,color,description,updated_at) VALUES($1,$2,$3,$4,$5,now()) ON CONFLICT(id) DO UPDATE SET name=$3,color=$4,description=$5,updated_at=now() WHERE subjects.user_id=$2`,[s.id,user.id,s.name,s.color,s.description]);
+    for(const s of data.subjects) await tx.query(`INSERT INTO subjects(id,user_id,name,color,description,teacher,hours,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,now()) ON CONFLICT(id) DO UPDATE SET name=$3,color=$4,description=$5,teacher=COALESCE($8,subjects.teacher),hours=COALESCE($9,subjects.hours),updated_at=now() WHERE subjects.user_id=$2`,[s.id,user.id,s.name,s.color,s.description,s.teacher??'',s.hours??0,s.teacher??null,s.hours??null]);
     const previous=(await tx.query('SELECT * FROM academic_tasks WHERE user_id=$1',[user.id])).rows;
     const imported=new Set((await tx.query('SELECT task_id FROM classroom_task_links WHERE user_id=$1 AND task_id IS NOT NULL',[user.id])).rows.map(r=>r.task_id));
     for(const t of data.tasks) {

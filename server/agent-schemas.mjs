@@ -86,20 +86,20 @@ export const chartSpecificationSchema = z.object({
   xAxis: chartAxisSchema,
   yAxis: chartAxisSchema,
   series: z.array(z.object({ field: z.string().trim().min(1).max(80), label: z.string().trim().min(1).max(100) }).strict()).min(1).max(8),
-  data: z.array(z.record(z.unknown())).max(500),
-  filters: z.array(z.record(z.unknown())).max(30).optional(),
+  data: z.array(z.record(z.string(), z.unknown())).max(500),
+  filters: z.array(z.record(z.string(), z.unknown())).max(30).optional(),
   source: z.object({ tool: z.enum(chartSourceValues) }).strict(),
   datasetVersion: z.string().trim().min(1).max(40),
 }).strict();
 
-const metadataSchema = z.record(z.unknown()).optional();
+const metadataSchema = z.record(z.string(), z.unknown()).optional();
 export const textResponseSchema = z.object({ type: z.literal('text'), content: z.string().min(1), metadata: metadataSchema }).strict();
-export const analysisResponseSchema = z.object({ type: z.literal('analysis'), analysis: z.string().min(1), metrics: z.record(z.unknown()), chart: chartSpecificationSchema.optional(), metadata: metadataSchema }).strict();
-export const actionResponseSchema = z.object({ type: z.literal('action'), action: z.enum(writableToolValues), result: z.record(z.unknown()), metadata: metadataSchema }).strict();
+export const analysisResponseSchema = z.object({ type: z.literal('analysis'), analysis: z.string().min(1), metrics: z.record(z.string(), z.unknown()), chart: chartSpecificationSchema.optional(), metadata: metadataSchema }).strict();
+export const actionResponseSchema = z.object({ type: z.literal('action'), action: z.enum(writableToolValues), result: z.record(z.string(), z.unknown()), metadata: metadataSchema }).strict();
 export const structuredResponseSchema = z.discriminatedUnion('type', [textResponseSchema, analysisResponseSchema, actionResponseSchema]);
 
 export const agentChatInputSchema = z.object({ message: z.string().trim().min(1).max(12000), conversationId: uuid.optional() }).strict();
-export const toolCallSchema = z.object({ id: z.string().min(1).max(200), name: z.string().min(1).max(100), arguments: z.record(z.unknown()) }).strict();
+export const toolCallSchema = z.object({ id: z.string().min(1).max(200), name: z.string().min(1).max(100), arguments: z.record(z.string(), z.unknown()) }).strict();
 
 export const responseJsonSchemas = Object.freeze({
   text: { type: 'object', additionalProperties: false, required: ['type', 'content'], properties: { type: { const: 'text' }, content: { type: 'string', minLength: 1 }, metadata: { type: 'object', additionalProperties: true } } },
