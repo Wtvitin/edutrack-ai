@@ -4,34 +4,18 @@ Aluno: Victor Samuel Costa de Oliveira
 
 Disciplina: Innovation Lab - Desenvolvimento Avançado No/Low Code
 
-## Modalidade desta entrega
-
-Implementação no EduTrack AI existente, com adaptação de tecnologias solicitada pelo aluno. Este documento registra o resultado real; a aceitação da adaptação cabe ao professor.
-
 ## Resolução
 
-O EduTrack AI foi mantido em seu repositório existente, com README, controle de versão e histórico de alterações. Nesta execução, o Git disponível respondeu `git version 2.52.0`. O código-base analisado foi o commit `c29574d0984452718efd6e1f4b3f6973b82460c3`.
+O EduTrack AI foi mantido no repositório existente, com README, controle de versão e histórico de alterações. O Git registra versões do projeto; o GitHub hospeda o repositório e permite revisar mudanças por pull requests. A branch de documentação e seu merge na `main` foram registrados no [PR #2](https://github.com/Wtvitin/edutrack-ai/pull/2).
 
-Git registra versões do projeto; GitHub hospeda o repositório e permite revisar mudanças por Pull Requests. O fluxo foi demonstrado de verdade com uma branch de documentação e o PR #2, incorporado à main.
+## Verificação no computador do aluno
 
-A conta GitHub já existia: não foi criada outra conta nem foi verificada nesta execução sua associação ao e-mail institucional. A cópia de trabalho foi obtida pelo arquivo de código-fonte do GitHub, e não será apresentada como um `git clone` realizado no computador pessoal.
+Após a abertura do PR de entrega, o aluno executou os comandos no PowerShell do Windows e compartilhou os resultados. O Git respondeu `git version 2.54.0.windows.1`. O clone foi concluído, o remoto `origin` apontava para o repositório correto e `git status` confirmou a branch `main` atualizada com `origin/main` e sem alterações locais. O e-mail institucional foi configurado no clone e a verificação do endereço na conta GitHub foi confirmada separadamente. O endereço completo não é reproduzido neste repositório público.
 
-## Evidências no projeto
+## Evidências e anexos do roteiro
 
-- [README.md](https://github.com/Wtvitin/edutrack-ai/blob/release/final-delivery-classroom-20261119/README.md)
+- [Repositório EduTrack AI](https://github.com/Wtvitin/edutrack-ai).
+- [Histórico da branch main](https://github.com/Wtvitin/edutrack-ai/commits/main/) e [commit de merge do exercício](https://github.com/Wtvitin/edutrack-ai/commit/4e8cd47d98135848b2feb89de9e5c489deb1c19c).
+- As saídas do terminal foram conferidas em texto. O roteiro pede também capturas do terminal com `git --version` e do histórico de commits. Os links e a descrição acima não substituem os prints exigidos.
 
-Repositório: https://github.com/Wtvitin/edutrack-ai
-
-## Situação da atividade
-
-Repositório e versionamento demonstrados; conta institucional e captura do terminal pessoal não verificadas.
-
-## Entregáveis pedidos no roteiro original
-
-Link do seu repositório GitHub.
-Print do terminal mostrando o resultado de git --version.
-Print do histórico de commits no GitHub (mostrando o commit realizado).
-
-As evidências e limitações desta resposta devem ser lidas em conjunto. Logs reais de comandos não são apresentados como screenshots de VS Code, Xano ou FlutterFlow.
-
-PR de entrega final: https://github.com/Wtvitin/edutrack-ai/pull/3
+[PR de entrega final](https://github.com/Wtvitin/edutrack-ai/pull/3)
