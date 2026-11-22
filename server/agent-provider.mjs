@@ -121,6 +121,30 @@ function groqResponseFormatBody(responseFormat) {
   return responseFormat ? { type: 'json_object' } : undefined;
 }
 
+function compactGroqContext(messages) {
+  const firstUser = messages.findIndex(message => message.role === 'user');
+  const currentUser = messages.findLastIndex(message => message.role === 'user');
+  const currentTurn = currentUser > firstUser
+    ? [...messages.slice(0, firstUser), ...messages.slice(currentUser)]
+    : messages;
+
+  let compacted = currentTurn !== messages;
+  const result = currentTurn.map(message => {
+    if (message.role !== 'tool' || message.name !== 'list_tasks' || typeof message.content !== 'string' || Buffer.byteLength(message.content) <= 4000) return message;
+    let list;
+    try { list = JSON.parse(message.content); } catch { return message; }
+    if (!Array.isArray(list?.tasks)) return message;
+    // Keep a valid tool response with the original call ID and an explicit sample size.
+    const tasks = list.tasks.slice(0, 12).map(({ id, title, status, priority, dueDate, subjectName }) =>
+      ({ id, title, status, priority, dueDate, subjectName }));
+    const content = JSON.stringify({ count: list.count, tasks, omittedCount: list.tasks.length - tasks.length, descriptionsOmitted: true });
+    if (Buffer.byteLength(content) >= Buffer.byteLength(message.content)) return message;
+    compacted = true;
+    return { ...message, content };
+  });
+  return compacted ? result : null;
+}
+
 function parseJsonArguments(value) {
   if (typeof value !== 'string') return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   try {
@@ -259,7 +283,7 @@ async function completeGroq(config, transport, request) {
   if (!config.apiKey) throw new AgentProviderError('O Provider do Agent não está configurado.', 503, 'provider-not-configured');
   const model = request.model || config.model;
   if (!model) throw new AgentProviderError('O modelo do Agent não está configurado.', 503, 'model-not-configured');
-  const body = { model, messages: groqResponseMessages(request.messages, request.responseFormat), temperature: request.temperature ?? 0.2, max_tokens: request.maxTokens ?? 1600 };
+  let body = { model, messages: groqResponseMessages(request.messages, request.responseFormat), temperature: request.temperature ?? 0.2, max_tokens: request.maxTokens ?? 1600 };
   const tools = groqTools(request.tools);
   if (tools.length) { body.tools = tools; body.tool_choice = request.toolChoice || 'auto'; }
   if (request.responseFormat) body.response_format = groqResponseFormatBody(request.responseFormat);
@@ -270,6 +294,16 @@ async function completeGroq(config, transport, request) {
     if (remaining <= 0) break;
     try {
       const response = await transport.post(config.baseUrl + '/chat/completions', { 'Content-Type': 'application/json', Authorization: 'Bearer ' + config.apiKey }, body, remaining);
+      if (response.status === 413) {
+        const compacted = attempt === 0 ? compactGroqContext(request.messages ?? []) : null;
+        if (compacted && Date.now() < deadline) {
+          body = { ...body, messages: groqResponseMessages(compacted, request.responseFormat) };
+          continue;
+        }
+        const error = new AgentProviderError('O contexto excedeu o limite do serviço de IA.', 503, 'provider-request-too-large');
+        error.providerStatus = response.status;
+        throw error;
+      }
       if (response.status < 200 || response.status >= 300) {
         const error = new AgentProviderError('O Provider não conseguiu responder.', response.status === 429 ? 429 : response.status >= 500 || response.status === 408 ? 503 : 503, 'provider-http-error', transientStatus(response.status));
         error.providerStatus = response.status;

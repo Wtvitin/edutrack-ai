@@ -166,6 +166,78 @@ test('Groq não repete erro de autorização nem chama outro provider', async ()
   assert.equal(attempts, 1);
 });
 
+test('Groq recupera de 413 removendo turnos antigos e preservando o resultado da ferramenta atual', async () => {
+  const requests = [];
+  const provider = createAgentProvider(config({ provider: 'groq', apiKey: 'test-key', model: 'openai/gpt-oss-120b' }), {
+    async post(_url, _headers, body) {
+      requests.push(body);
+      return requests.length === 1
+        ? { status: 413, body: {} }
+        : { status: 200, body: { choices: [{ message: { content: '{"type":"action"}' } }] } };
+    },
+  });
+  const currentTool = { role: 'tool', name: 'create_task', tool_call_id: 'current', content: '{"title":"Revisar álgebra"}' };
+  await provider.complete({
+    messages: [
+      { role: 'system', content: 'Instruções do EduTrack' },
+      { role: 'user', content: 'Pergunta antiga' },
+      { role: 'assistant', content: 'Resposta antiga'.repeat(1500) },
+      { role: 'user', content: 'Crie uma tarefa de álgebra' },
+      { role: 'assistant', content: null, tool_calls: [{ id: 'current', name: 'create_task', arguments: {} }] },
+      currentTool,
+    ],
+    responseFormat: { name: 'agent_action_response_v1', schema: { type: 'object' } },
+  });
+  const [original, retry] = requests;
+  assert.equal(requests.length, 2);
+  assert.ok(original.messages.some(message => message.content === 'Pergunta antiga'));
+  assert.deepEqual(retry.messages.map(message => message.role), ['system', 'user', 'assistant', 'tool', 'user']);
+  assert.equal(retry.messages[1].content, 'Crie uma tarefa de álgebra');
+  assert.equal(retry.messages[2].tool_calls[0].id, 'current');
+  assert.deepEqual(retry.messages[3], currentTool);
+  assert.deepEqual(retry.response_format, original.response_format);
+});
+
+test('Groq reduz uma lista grande da consulta atual sem alterar o resultado original', async () => {
+  const requests = [];
+  const provider = createAgentProvider(config({ provider: 'groq', apiKey: 'test-key', model: 'openai/gpt-oss-120b' }), {
+    async post(_url, _headers, body) {
+      requests.push(body);
+      return requests.length === 1
+        ? { status: 413, body: {} }
+        : { status: 200, body: { choices: [{ message: { content: 'Resumo das tarefas' } }] } };
+    },
+  });
+  const tasks = Array.from({ length: 20 }, (_, index) => ({ id: String(index), title: 'Estudar', description: 'a'.repeat(1500), status: 'TODO' }));
+  const output = { role: 'tool', name: 'list_tasks', tool_call_id: 'tasks', content: JSON.stringify({ count: tasks.length, tasks }) };
+  await provider.complete({
+    messages: [
+      { role: 'user', content: 'Quais tarefas tenho?' },
+      { role: 'assistant', content: null, tool_calls: [{ id: 'tasks', name: 'list_tasks', arguments: {} }] },
+      output,
+    ],
+  });
+  assert.equal(requests.length, 2);
+  const result = requests[1].messages[2];
+  const sample = JSON.parse(result.content);
+  assert.equal(result.tool_call_id, 'tasks');
+  assert.equal(sample.count, 20);
+  assert.equal(sample.tasks.length, 12);
+  assert.equal(sample.omittedCount, 8);
+  assert.equal(sample.descriptionsOmitted, true);
+  assert.equal(JSON.parse(output.content).tasks[0].description.length, 1500);
+});
+
+test('Groq retorna erro específico de 413 quando o contexto não pode ser reduzido', async () => {
+  let attempts = 0;
+  const provider = createAgentProvider(config({ provider: 'groq', apiKey: 'test-key', model: 'openai/gpt-oss-120b' }), {
+    async post() { attempts += 1; return { status: 413, body: {} }; },
+  });
+  await assert.rejects(provider.complete({ messages: [{ role: 'user', content: 'Olá' }] }),
+    error => error.code === 'provider-request-too-large' && error.providerStatus === 413);
+  assert.equal(attempts, 1);
+});
+
 test('Groq rejeita resposta inválida pelo contrato comum do provider', async () => {
   let attempts = 0;
   const provider = createAgentProvider(config({ provider: 'groq', apiKey: 'groq-key', baseUrl: 'https://groq.test/openai/v1', model: 'openai/gpt-oss-20b' }), { async post() { attempts += 1; return { status: 200, body: { choices: [] } }; } });
